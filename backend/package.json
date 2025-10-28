@@ -1,0 +1,23 @@
+{
+  "name": "astar-tutor",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "install:deps": "npm i openai @langchain/langgraph dotenv zod @modelcontextprotocol/sdk express cors",
+    "chat": "node src/main.js",
+    "canvas": "node src/main.js --mode=canvas",
+    "dev": "node --watch src/api/server.js",
+    "start": "node src/api/server.js",
+    "api": "node src/api/server.js"
+  },
+  "dependencies": {
+    "@langchain/langgraph": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "openai": "^6.7.0",
+    "zod": "^4.1.12"
+  }
+}

@@ -1,0 +1,71 @@
+Create ASTAR - a dark-themed critical thinking platform that helps anyone learn and understand complex topics at a fundamental level.
+
+🎨 DESIGN:
+- Very dark background: #0F1419
+- Cards: #1C1F26
+- Primary buttons: Emerald green #10B981
+- Accents: Purple #A855F7
+- Text: White/light gray
+- Style: ChatGPT-inspired, sleek, modern
+- Font: Inter, 12px rounded corners
+
+📱 3 PAGES:
+
+1. BOARD (Dashboard):
+   - Vertical list of assignment cards, ranked by due date
+   - Each card:
+     * Title (bold, large)
+     * Course name with colored dot
+     * Description (first 150 chars)
+     * Due date badge ("Due in 2 days")
+     * Points badge (purple, "50 pts")
+     * Emerald green button: "Start with ASTAR"
+   - Urgent items (≤2 days) have red/orange glow
+   - Empty state: "🎉 All caught up!"
+
+2. ASTAR (Workbench):
+   - ChatGPT-style split interface
+   - Left sidebar (collapsible): Assignment context
+   - Main chat area:
+     * User: Right-aligned, emerald green bubbles
+     * AI: Left-aligned, dark gray with purple border
+     * ASTAR star icon avatar
+   - Input placeholder: "Ask a question... (ASTAR guides you to think through it)"
+   - Emerald send button
+   - Typing indicator
+
+3. CONNECTIONS (Settings):
+   - Connection status (green ✓ or red ✗)
+   - Form fields:
+     * University dropdown (Canvas.instructure.com or Custom)
+     * Canvas API Token (secure input, show/hide toggle)
+   - "Test Connection" button
+   - "Save Changes" button (emerald)
+   - Collapsible "How to get token" instructions
+   - Last sync time
+
+🔐 ONBOARDING (First-time):
+- Centered card on dark background
+- Large star logo with gradient
+- Title: "Welcome to ASTAR"
+- Subtitle: "Bring Back Critical Thinking"
+- University dropdown
+- API Token secure input
+- Large emerald "Connect to Canvas" button
+- Glassmorphism card effect
+
+✨ INTERACTIONS:
+- Smooth transitions (0.2s)
+- Hover effects on all interactive elements
+- Focus states with emerald glow
+- Loading skeletons with shimmer
+- Toast notifications (top-right)
+- Keyboard navigation
+
+📱 RESPONSIVE:
+- Mobile: Bottom nav, stacked cards
+- Tablet: Collapsible sidebar
+- Desktop: Full sidebar (240px), max-width 1200px
+
+Make it feel premium, modern, and focused on critical thinking. The core purpose: help anyone break down and understand complex problems at a fundamental level.
+
