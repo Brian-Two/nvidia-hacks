@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Menu, X, Download, Upload, FileText } from "lucide-react";
+import { Send, Sparkles, Menu, X, Download, Upload, FileText, Plus, Trash2, Link2, FileUp, Type } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendChatMessage, submitAssignmentToCanvas } from "@/lib/api";
@@ -29,6 +29,14 @@ interface Assignment {
   points: number;
 }
 
+interface ContextItem {
+  id: string;
+  type: 'pdf' | 'text' | 'link';
+  name: string;
+  content: string;
+  addedAt: Date;
+}
+
 const Astar = () => {
   const location = useLocation();
   const assignment = (location.state as { assignment?: Assignment })?.assignment;
@@ -50,6 +58,12 @@ const Astar = () => {
   const [generatedDraft, setGeneratedDraft] = useState<string | null>(null);
   const [generatedStudyGuide, setGeneratedStudyGuide] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
+  const [showAddContext, setShowAddContext] = useState(false);
+  const [newContextType, setNewContextType] = useState<'pdf' | 'text' | 'link'>('text');
+  const [newContextText, setNewContextText] = useState('');
+  const [newContextUrl, setNewContextUrl] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -81,9 +95,23 @@ const Astar = () => {
     setIsTyping(true);
 
     try {
-      // Call real LLM backend with optional assignment context
+      // Build additional context from context items
+      let additionalContext = '';
+      if (contextItems.length > 0) {
+        additionalContext = '\n\nAdditional Context:\n' + contextItems.map(item => {
+          if (item.type === 'link') {
+            return `[Link: ${item.name}] ${item.content}`;
+          } else if (item.type === 'pdf') {
+            return `[Document: ${item.name}]\n${item.content.substring(0, 5000)}`; // Limit to 5000 chars
+          } else {
+            return `[Note: ${item.name}]\n${item.content}`;
+          }
+        }).join('\n\n');
+      }
+
+      // Call real LLM backend with optional assignment context and additional context
       const response = await sendChatMessage({
-        message: input,
+        message: input + additionalContext,
         conversationHistory: messages.map(m => ({
           role: m.role,
           content: m.content
@@ -129,6 +157,115 @@ const Astar = () => {
       e.preventDefault();
       handleSend();
     }
+  };
+
+  const handleAddTextContext = () => {
+    if (!newContextText.trim()) {
+      toast({
+        title: "Empty Context",
+        description: "Please enter some text",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newItem: ContextItem = {
+      id: Date.now().toString(),
+      type: 'text',
+      name: `Text Note ${contextItems.filter(i => i.type === 'text').length + 1}`,
+      content: newContextText,
+      addedAt: new Date(),
+    };
+
+    setContextItems([...contextItems, newItem]);
+    setNewContextText('');
+    setShowAddContext(false);
+    
+    toast({
+      title: "Context Added",
+      description: "Text context has been added successfully",
+    });
+  };
+
+  const handleAddLinkContext = () => {
+    if (!newContextUrl.trim()) {
+      toast({
+        title: "Empty URL",
+        description: "Please enter a URL",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newItem: ContextItem = {
+      id: Date.now().toString(),
+      type: 'link',
+      name: newContextUrl.split('/').pop() || 'Link',
+      content: newContextUrl,
+      addedAt: new Date(),
+    };
+
+    setContextItems([...contextItems, newItem]);
+    setNewContextUrl('');
+    setShowAddContext(false);
+    
+    toast({
+      title: "Link Added",
+      description: "Link has been added to context",
+    });
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf' && !file.type.includes('text')) {
+      toast({
+        title: "Invalid File Type",
+        description: "Please upload a PDF or text file",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      
+      const newItem: ContextItem = {
+        id: Date.now().toString(),
+        type: 'pdf',
+        name: file.name,
+        content: text,
+        addedAt: new Date(),
+      };
+
+      setContextItems([...contextItems, newItem]);
+      setShowAddContext(false);
+      
+      toast({
+        title: "File Uploaded",
+        description: `${file.name} has been added to context`,
+      });
+    } catch (error) {
+      toast({
+        title: "Upload Failed",
+        description: "Could not read file",
+        variant: "destructive",
+      });
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveContext = (id: string) => {
+    setContextItems(contextItems.filter(item => item.id !== id));
+    toast({
+      title: "Context Removed",
+      description: "Item removed from context",
+    });
   };
 
   const handleGenerateDraft = async () => {
@@ -350,14 +487,150 @@ const Astar = () => {
           </div>
         )}
         
+        {/* Context Section */}
+        <div className="flex-1 flex flex-col p-4 border-t border-border overflow-y-auto">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-lg">Context</h2>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setShowAddContext(!showAddContext)}
+              className="h-7 w-7 p-0"
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Add Context Form */}
+          {showAddContext && (
+            <div className="mb-3 p-3 bg-background/50 rounded-lg border border-border space-y-3">
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant={newContextType === 'text' ? 'default' : 'outline'}
+                  onClick={() => setNewContextType('text')}
+                  className="flex-1"
+                >
+                  <Type className="w-3 h-3 mr-1" />
+                  Text
+                </Button>
+                <Button
+                  size="sm"
+                  variant={newContextType === 'link' ? 'default' : 'outline'}
+                  onClick={() => setNewContextType('link')}
+                  className="flex-1"
+                >
+                  <Link2 className="w-3 h-3 mr-1" />
+                  Link
+                </Button>
+                <Button
+                  size="sm"
+                  variant={newContextType === 'pdf' ? 'default' : 'outline'}
+                  onClick={() => {
+                    setNewContextType('pdf');
+                    fileInputRef.current?.click();
+                  }}
+                  className="flex-1"
+                >
+                  <FileUp className="w-3 h-3 mr-1" />
+                  File
+                </Button>
+              </div>
+
+              {newContextType === 'text' && (
+                <div className="space-y-2">
+                  <Textarea
+                    value={newContextText}
+                    onChange={(e) => setNewContextText(e.target.value)}
+                    placeholder="Paste text, notes, or instructions..."
+                    className="min-h-[100px] text-xs"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleAddTextContext}
+                    className="w-full"
+                  >
+                    Add Text
+                  </Button>
+                </div>
+              )}
+
+              {newContextType === 'link' && (
+                <div className="space-y-2">
+                  <input
+                    type="url"
+                    value={newContextUrl}
+                    onChange={(e) => setNewContextUrl(e.target.value)}
+                    placeholder="https://example.com"
+                    className="w-full px-3 py-2 text-xs bg-background border border-border rounded-md focus:border-primary"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleAddLinkContext}
+                    className="w-full"
+                  >
+                    Add Link
+                  </Button>
+                </div>
+              )}
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.txt,.doc,.docx"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </div>
+          )}
+
+          {/* Context Items List */}
+          <div className="space-y-2">
+            {contextItems.length === 0 ? (
+              <p className="text-xs text-muted-foreground text-center py-4">
+                No context added yet. Click + to add PDFs, links, or text that ASTAR can reference.
+              </p>
+            ) : (
+              contextItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="p-2 bg-background/50 border border-border rounded-lg"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 flex-1 min-w-0">
+                      {item.type === 'pdf' && <FileText className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />}
+                      {item.type === 'link' && <Link2 className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />}
+                      {item.type === 'text' && <Type className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate">{item.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {item.type === 'link' ? item.content : `${item.content.substring(0, 50)}...`}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleRemoveContext(item.id)}
+                      className="h-6 w-6 p-0 hover:bg-destructive/10"
+                    >
+                      <Trash2 className="w-3 h-3 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         {/* Notes Section */}
-        <div className="flex-1 flex flex-col p-4">
-          <h2 className="font-semibold text-lg mb-2">My Notes</h2>
+        <div className="p-4 border-t border-border">
+          <h2 className="font-semibold text-sm mb-2">Quick Notes</h2>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Write your thoughts, ideas, and notes here..."
-            className="flex-1 resize-none bg-background/50 border-border focus:border-primary transition-colors"
+            placeholder="Jot down quick thoughts..."
+            className="min-h-[80px] text-xs resize-none bg-background/50 border-border focus:border-primary transition-colors"
           />
         </div>
       </aside>
