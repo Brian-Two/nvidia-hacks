@@ -7,11 +7,15 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "react-router-dom";
 import ProgressTracker from "@/components/ProgressTracker";
 import { generateStudyGuidePDF, generateAssignmentDraftPDF } from "@/lib/pdfGenerator";
+import { formatLLMResponse } from "@/lib/messageFormatter";
+import FormattedMessage from "@/components/FormattedMessage";
 
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  questions?: string[];
+  formattedContent?: string;
 }
 
 interface Assignment {
@@ -87,10 +91,15 @@ const Astar = () => {
         assignmentContext: assignment
       });
 
+      // Format the LLM response (strip <think> tags, extract questions)
+      const formatted = formatLLMResponse(response.response);
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: response.response,
+        content: response.response, // Keep original for history
+        formattedContent: formatted.content,
+        questions: formatted.questions,
       };
       
       setMessages((prev) => [...prev, aiMessage]);
@@ -399,7 +408,15 @@ const Astar = () => {
                       : "bg-card border border-primary/20 text-foreground"
                   }`}
                 >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  {message.role === "user" ? (
+                    <p className="text-sm leading-relaxed">{message.content}</p>
+                  ) : (
+                    <FormattedMessage
+                      content={message.formattedContent || message.content}
+                      questions={message.questions || []}
+                      hasQuestions={(message.questions?.length || 0) > 0}
+                    />
+                  )}
                 </div>
               </div>
             ))}
