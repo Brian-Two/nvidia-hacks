@@ -15,18 +15,28 @@ import { useToast } from "@/hooks/use-toast";
 
 const Onboarding = () => {
   const [university, setUniversity] = useState("");
+  const [customUrl, setCustomUrl] = useState("");
   const [apiToken, setApiToken] = useState("");
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleConnect = () => {
-    if (!university || !apiToken) {
+    // Check if custom domain is selected and custom URL is empty
+    if (!university || !apiToken || (university === "custom" && !customUrl)) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields",
         variant: "destructive",
       });
       return;
+    }
+
+    // Store connection info in localStorage
+    localStorage.setItem("astar_connected", "true");
+    localStorage.setItem("astar_university", university);
+    localStorage.setItem("astar_api_token", apiToken);
+    if (university === "custom") {
+      localStorage.setItem("astar_custom_url", customUrl);
     }
 
     // Simulate connection
@@ -74,6 +84,24 @@ const Onboarding = () => {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Show custom URL input when Custom Domain is selected */}
+            {university === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="customUrl">Custom Canvas URL</Label>
+                <Input
+                  id="customUrl"
+                  type="text"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  placeholder="e.g., yourschool.instructure.com"
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter your university's Canvas domain
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="apiToken">Canvas API Token</Label>

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CheckCircle, XCircle, Eye, EyeOff, ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CheckCircle, XCircle, Eye, EyeOff, ChevronDown, ChevronUp, Plus, Trash2, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 interface McpServer {
   id: string;
@@ -30,6 +31,7 @@ const MCP_SERVER_TYPES = [
 
 const Connections = () => {
   const [university, setUniversity] = useState("");
+  const [customUrl, setCustomUrl] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
@@ -37,9 +39,27 @@ const Connections = () => {
   const [mcpServers, setMcpServers] = useState<McpServer[]>([]);
   const [showTokens, setShowTokens] = useState<Record<string, boolean>>({});
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Load existing connection from localStorage
+  useEffect(() => {
+    const connected = localStorage.getItem("astar_connected") === "true";
+    const storedUniversity = localStorage.getItem("astar_university");
+    const storedToken = localStorage.getItem("astar_api_token");
+    const storedCustomUrl = localStorage.getItem("astar_custom_url");
+
+    if (connected && storedUniversity && storedToken) {
+      setIsConnected(true);
+      setUniversity(storedUniversity);
+      setApiToken(storedToken);
+      if (storedCustomUrl) {
+        setCustomUrl(storedCustomUrl);
+      }
+    }
+  }, []);
 
   const handleTestConnection = () => {
-    if (!university || !apiToken) {
+    if (!university || !apiToken || (university === "custom" && !customUrl)) {
       toast({
         title: "Missing Information",
         description: "Please fill in all fields",
@@ -60,6 +80,14 @@ const Connections = () => {
 
   const handleSave = () => {
     if (isConnected) {
+      // Save to localStorage
+      localStorage.setItem("astar_connected", "true");
+      localStorage.setItem("astar_university", university);
+      localStorage.setItem("astar_api_token", apiToken);
+      if (university === "custom") {
+        localStorage.setItem("astar_custom_url", customUrl);
+      }
+      
       toast({
         title: "Settings Saved",
         description: "Your connection settings have been updated",
@@ -71,6 +99,24 @@ const Connections = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDisconnect = () => {
+    // Clear localStorage
+    localStorage.removeItem("astar_connected");
+    localStorage.removeItem("astar_university");
+    localStorage.removeItem("astar_api_token");
+    localStorage.removeItem("astar_custom_url");
+    
+    toast({
+      title: "Disconnected",
+      description: "You have been disconnected from Canvas",
+    });
+    
+    // Redirect to onboarding
+    setTimeout(() => {
+      navigate("/onboarding");
+    }, 1000);
   };
 
   const handleAddMcpServer = () => {
@@ -179,6 +225,24 @@ const Connections = () => {
               </Select>
             </div>
 
+            {/* Show custom URL input when Custom Domain is selected */}
+            {university === "custom" && (
+              <div className="space-y-2">
+                <Label htmlFor="customUrl">Custom Canvas URL</Label>
+                <Input
+                  id="customUrl"
+                  type="text"
+                  value={customUrl}
+                  onChange={(e) => setCustomUrl(e.target.value)}
+                  placeholder="e.g., yourschool.instructure.com"
+                  className="bg-background"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter your university's Canvas domain
+                </p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="apiToken">Canvas API Token</Label>
               <div className="relative">
@@ -250,6 +314,20 @@ const Connections = () => {
                 Save Changes
               </Button>
             </div>
+
+            {/* Disconnect Button - only show when connected */}
+            {isConnected && (
+              <div className="pt-4 border-t border-border">
+                <Button
+                  onClick={handleDisconnect}
+                  variant="outline"
+                  className="w-full text-destructive border-destructive hover:bg-destructive hover:text-white"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Disconnect Canvas
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 

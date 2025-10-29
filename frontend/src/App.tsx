@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Board from "./pages/Board";
 import Astar from "./pages/Astar";
@@ -11,6 +11,17 @@ import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
+
+// Protected Route wrapper - redirects to onboarding if not connected
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const isConnected = localStorage.getItem("astar_connected") === "true";
+  
+  if (!isConnected) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  
+  return <>{children}</>;
+};
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -23,25 +34,31 @@ const App = () => (
           <Route
             path="/"
             element={
-              <Layout>
-                <Board />
-              </Layout>
+              <ProtectedRoute>
+                <Layout>
+                  <Board />
+                </Layout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/astar"
             element={
-              <Layout>
-                <Astar />
-              </Layout>
+              <ProtectedRoute>
+                <Layout>
+                  <Astar />
+                </Layout>
+              </ProtectedRoute>
             }
           />
           <Route
             path="/connections"
             element={
-              <Layout>
-                <Connections />
-              </Layout>
+              <ProtectedRoute>
+                <Layout>
+                  <Connections />
+                </Layout>
+              </ProtectedRoute>
             }
           />
           <Route path="*" element={<NotFound />} />
