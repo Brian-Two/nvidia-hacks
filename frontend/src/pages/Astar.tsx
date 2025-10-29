@@ -2,6 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Sparkles, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { sendChatMessage } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: string;
@@ -22,6 +24,7 @@ const Astar = () => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notes, setNotes] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -44,16 +47,42 @@ const Astar = () => {
     setInput("");
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Call real LLM backend
+      const response = await sendChatMessage({
+        message: input,
+        conversationHistory: messages.map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+      });
+
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: "That's a great question! Let me help you think through this step by step. First, let's break down what we know...",
+        content: response.response,
       };
+      
       setMessages((prev) => [...prev, aiMessage]);
+    } catch (error) {
+      console.error('Chat error:', error);
+      
+      toast({
+        title: "Failed to Send Message",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+
+      // Add error message to chat
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "Sorry, I encountered an error processing your message. Please make sure the backend is running and try again.",
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
