@@ -281,7 +281,7 @@ const Astar = () => {
       </aside>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <main className="flex-1 flex flex-col">
         {/* Header */}
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3 border-b border-border">
           <Button
