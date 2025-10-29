@@ -269,26 +269,34 @@ app.post('/api/assignments', async (req, res) => {
       });
     }
 
-    // Create temporary client with user credentials
-    const tempClient = { ...canvasClient };
-    tempClient.token = apiToken;
-    if (canvasUrl) {
-      tempClient.baseUrl = canvasUrl.endsWith('/api/v1') 
-        ? canvasUrl 
-        : `${canvasUrl}/api/v1`;
-    }
-
-    const assignments = await tempClient.getUpcomingAssignments(limit);
+    // Set credentials on the shared client (will be overridden per request)
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
     
-    if (assignments.error) {
-      return res.status(500).json({ error: assignments.error });
-    }
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
 
-    res.json({
-      success: true,
-      count: assignments.length,
-      assignments
-    });
+      const assignments = await canvasClient.getUpcomingAssignments(limit);
+      
+      if (assignments.error) {
+        return res.status(500).json({ error: assignments.error });
+      }
+
+      res.json({
+        success: true,
+        count: assignments.length,
+        assignments
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
   } catch (error) {
     console.error('Get assignments error:', error);
     res.status(500).json({ error: error.message });
