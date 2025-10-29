@@ -56,6 +56,17 @@ const Connections = () => {
         setCustomUrl(storedCustomUrl);
       }
     }
+
+    // Load MCP servers from localStorage
+    const storedMcpServers = localStorage.getItem("astar_mcp_servers");
+    if (storedMcpServers) {
+      try {
+        const servers = JSON.parse(storedMcpServers);
+        setMcpServers(servers);
+      } catch (error) {
+        console.error("Failed to load MCP servers:", error);
+      }
+    }
   }, []);
 
   const handleTestConnection = () => {
@@ -127,11 +138,17 @@ const Connections = () => {
       apiKey: "",
       isConnected: false,
     };
-    setMcpServers([...mcpServers, newServer]);
+    const updatedServers = [...mcpServers, newServer];
+    setMcpServers(updatedServers);
+    // Save to localStorage
+    localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
   };
 
   const handleRemoveMcpServer = (id: string) => {
-    setMcpServers(mcpServers.filter(server => server.id !== id));
+    const updatedServers = mcpServers.filter(server => server.id !== id);
+    setMcpServers(updatedServers);
+    // Save to localStorage
+    localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
     toast({
       title: "Server Removed",
       description: "MCP server connection has been removed",
@@ -139,9 +156,12 @@ const Connections = () => {
   };
 
   const handleUpdateMcpServer = (id: string, field: keyof McpServer, value: string) => {
-    setMcpServers(mcpServers.map(server => 
+    const updatedServers = mcpServers.map(server => 
       server.id === id ? { ...server, [field]: value } : server
-    ));
+    );
+    setMcpServers(updatedServers);
+    // Save to localStorage
+    localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
   };
 
   const handleTestMcpConnection = (id: string) => {
@@ -156,9 +176,12 @@ const Connections = () => {
     }
 
     setTimeout(() => {
-      setMcpServers(mcpServers.map(s => 
+      const updatedServers = mcpServers.map(s => 
         s.id === id ? { ...s, isConnected: true } : s
-      ));
+      );
+      setMcpServers(updatedServers);
+      // Save to localStorage
+      localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
       toast({
         title: "Connection Successful",
         description: `${server.type} is now connected`,
