@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "react-router-dom";
 
 interface Message {
   id: string;
@@ -11,17 +12,33 @@ interface Message {
   content: string;
 }
 
+interface Assignment {
+  id: string;
+  title: string;
+  course: string;
+  courseColor: string;
+  description: string;
+  dueDate: string;
+  daysUntilDue: number;
+  points: number;
+}
+
 const Astar = () => {
+  const location = useLocation();
+  const assignment = (location.state as { assignment?: Assignment })?.assignment;
+  
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "1",
       role: "assistant",
-      content: "Hi! I'm ASTAR. I'm here to help you think through complex problems at a fundamental level. What would you like to understand today?",
+      content: assignment 
+        ? `Hi! I'm ASTAR. I see you're working on "${assignment.title}" for ${assignment.course}. I'm here to help you think through this assignment at a fundamental level. What aspect would you like to explore first?`
+        : "Hi! I'm ASTAR. I'm here to help you think through complex problems at a fundamental level. What would you like to understand today?",
     },
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(!!assignment); // Open if assignment exists
   const [notes, setNotes] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -48,13 +65,14 @@ const Astar = () => {
     setIsTyping(true);
 
     try {
-      // Call real LLM backend
+      // Call real LLM backend with optional assignment context
       const response = await sendChatMessage({
         message: input,
         conversationHistory: messages.map(m => ({
           role: m.role,
           content: m.content
-        }))
+        })),
+        assignmentContext: assignment
       });
 
       const aiMessage: Message = {
@@ -100,30 +118,60 @@ const Astar = () => {
           sidebarOpen ? "w-80" : "w-0"
         } border-r border-border bg-card transition-all duration-200 overflow-hidden flex flex-col`}
       >
-        <div className="p-4 border-b border-border">
-          <h2 className="font-semibold text-lg mb-2">Assignment Context</h2>
-          <div className="space-y-3">
-            <div>
-              <span className="text-sm text-muted-foreground">Title:</span>
-              <p className="font-medium">Quantum Mechanics Problem Set</p>
+        {assignment ? (
+          // Show assignment context if assignment exists
+          <>
+            <div className="p-4 border-b border-border">
+              <h2 className="font-semibold text-lg mb-2">Assignment Context</h2>
+              <div className="space-y-3">
+                <div>
+                  <span className="text-sm text-muted-foreground">Title:</span>
+                  <p className="font-medium">{assignment.title}</p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Course:</span>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-2 h-2 rounded-full"
+                      style={{ backgroundColor: assignment.courseColor }}
+                    />
+                    <p className="font-medium">{assignment.course}</p>
+                  </div>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Due:</span>
+                  <p className="font-medium">
+                    In {assignment.daysUntilDue} {assignment.daysUntilDue === 1 ? 'day' : 'days'}
+                  </p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Points:</span>
+                  <p className="font-medium">{assignment.points} pts</p>
+                </div>
+                <div>
+                  <span className="text-sm text-muted-foreground">Description:</span>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    {assignment.description}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div>
-              <span className="text-sm text-muted-foreground">Course:</span>
-              <p className="font-medium">Physics 301</p>
-            </div>
-            <div>
-              <span className="text-sm text-muted-foreground">Due:</span>
-              <p className="font-medium">In 2 days</p>
-            </div>
-            <div>
-              <span className="text-sm text-muted-foreground">Description:</span>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Solve problems related to wave functions, the Schrödinger
-                equation, and quantum tunneling.
+          </>
+        ) : (
+          // Show empty state if no assignment
+          <div className="p-4 border-b border-border">
+            <h2 className="font-semibold text-lg mb-2">Assignment Context</h2>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Sparkles className="w-12 h-12 text-muted-foreground mb-3 opacity-50" />
+              <p className="text-sm text-muted-foreground">
+                No assignment selected
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Click "Start with ASTAR" on an assignment to get personalized help
               </p>
             </div>
           </div>
-        </div>
+        )}
         
         {/* Notes Section */}
         <div className="flex-1 flex flex-col p-4">

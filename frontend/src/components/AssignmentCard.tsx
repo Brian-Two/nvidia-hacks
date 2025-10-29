@@ -69,7 +69,20 @@ const AssignmentCard = ({
       </div>
 
       <Button
-        onClick={() => navigate(`/astar?assignment=${id}`)}
+        onClick={() => navigate('/astar', { 
+          state: { 
+            assignment: {
+              id,
+              title,
+              course,
+              courseColor,
+              description,
+              dueDate,
+              daysUntilDue,
+              points
+            }
+          }
+        })}
         className="w-full bg-gradient-primary text-primary-foreground font-semibold shadow-glow hover:shadow-lg hover:scale-[1.02] transition-all"
       >
         Start with ASTAR
