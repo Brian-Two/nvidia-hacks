@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { sendChatMessage } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "react-router-dom";
+import ProgressTracker from "@/components/ProgressTracker";
 
 interface Message {
   id: string;
@@ -40,8 +41,15 @@ const Astar = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(!!assignment); // Open if assignment exists
   const [notes, setNotes] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Progress tracking
+  const messageCount = Math.floor((messages.length - 1) / 2); // User messages only
+  const targetMessages = 10; // Target number of exchanges for completion
+  const progress = Math.min((messageCount / targetMessages) * 100, 100);
+  const isComplete = progress >= 100;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -110,8 +118,95 @@ const Astar = () => {
     }
   };
 
+  const handleGenerateDraft = async () => {
+    if (!assignment) return;
+    
+    setIsGenerating(true);
+    try {
+      const response = await sendChatMessage({
+        message: `Based on our entire conversation about "${assignment.title}", please generate a complete, polished draft for this assignment. Include all the concepts we discussed and structure it properly for submission.`,
+        conversationHistory: messages.map(m => ({
+          role: m.role,
+          content: m.content
+        })),
+        assignmentContext: assignment
+      });
+
+      // Add the generated draft as a message
+      const draftMessage: Message = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: `# 📝 Assignment Draft\n\n${response.response}\n\n---\n\n*This draft is based on our discussion. Please review, edit, and add your own voice before submitting.*`,
+      };
+      
+      setMessages((prev) => [...prev, draftMessage]);
+      
+      toast({
+        title: "Draft Generated!",
+        description: "Review the draft below and make any necessary edits.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to Generate Draft",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateStudyGuide = async () => {
+    setIsGenerating(true);
+    try {
+      const response = await sendChatMessage({
+        message: `Based on our entire conversation, please create a comprehensive study guide that summarizes all the key concepts, insights, and important points we discussed. Format it clearly with headings and bullet points.`,
+        conversationHistory: messages.map(m => ({
+          role: m.role,
+          content: m.content
+        })),
+        assignmentContext: assignment
+      });
+
+      // Add the study guide as a message
+      const studyGuideMessage: Message = {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: `# 📚 Study Guide\n\n${response.response}\n\n---\n\n*This study guide captures the key points from our discussion.*`,
+      };
+      
+      setMessages((prev) => [...prev, studyGuideMessage]);
+      
+      toast({
+        title: "Study Guide Generated!",
+        description: "Your personalized study guide is ready below.",
+      });
+    } catch (error) {
+      toast({
+        title: "Failed to Generate Study Guide",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   return (
-    <div className="h-screen flex">
+    <div className="h-screen flex flex-col">
+      {/* Progress Tracker */}
+      <ProgressTracker
+        progress={progress}
+        messageCount={messageCount}
+        isComplete={isComplete}
+        hasAssignment={!!assignment}
+        onGenerateDraft={handleGenerateDraft}
+        onGenerateStudyGuide={handleGenerateStudyGuide}
+        isGenerating={isGenerating}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex overflow-hidden">
       {/* Collapsible Sidebar */}
       <aside
         className={`${
@@ -274,6 +369,7 @@ const Astar = () => {
             </Button>
           </div>
         </div>
+      </main>
       </div>
     </div>
   );
