@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* ASTAR Dark Theme */
+    --background: 215 19% 9%;  /* #0F1419 */
+    --foreground: 0 0% 98%;
+    
+    --card: 218 14% 13%;  /* #1C1F26 */
+    --card-foreground: 0 0% 98%;
+    
+    --popover: 218 14% 13%;
+    --popover-foreground: 0 0% 98%;
+    
+    --primary: 158 64% 42%;  /* darker emerald #059669 */
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 218 14% 18%;
+    --secondary-foreground: 0 0% 98%;
+    
+    --muted: 218 14% 16%;
+    --muted-foreground: 0 0% 65%;
+    
+    --accent: 158 64% 42%;  /* same as primary - no purple */
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    
+    --warning: 25 95% 53%;  /* orange for urgent */
+    --warning-foreground: 0 0% 100%;
+    
+    --border: 218 14% 20%;
+    --input: 218 14% 16%;
+    --ring: 158 64% 52%;
+    
+    --radius: 0.75rem;  /* 12px */
+    
+    /* Gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(158 64% 42%), hsl(158 74% 48%));
+    --gradient-accent: linear-gradient(135deg, hsl(158 64% 42%), hsl(158 74% 48%));
+    --gradient-card: linear-gradient(180deg, hsl(218 14% 13%), hsl(218 14% 11%));
+    
+    /* Shadows */
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+    --shadow-glow: 0 0 20px rgb(5 150 105 / 0.2);
+    --shadow-urgent: 0 0 20px rgb(255 107 0 / 0.3);
+    
+    /* Transitions */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+}
