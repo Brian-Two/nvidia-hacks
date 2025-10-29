@@ -242,10 +242,26 @@ app.get('/api/mcp/tools', async (req, res) => {
 });
 
 // Assignment Endpoints
-app.get('/api/assignments', async (req, res) => {
+app.post('/api/assignments', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 20;
-    const assignments = await canvasClient.getUpcomingAssignments(limit);
+    const { canvasUrl, apiToken, limit = 20 } = req.body;
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    // Create temporary client with user credentials
+    const tempClient = { ...canvasClient };
+    tempClient.token = apiToken;
+    if (canvasUrl) {
+      tempClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+        ? canvasUrl 
+        : `${canvasUrl}/api/v1`;
+    }
+
+    const assignments = await tempClient.getUpcomingAssignments(limit);
     
     if (assignments.error) {
       return res.status(500).json({ error: assignments.error });
