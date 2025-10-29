@@ -331,6 +331,68 @@ app.get('/api/assignments/:assignmentId', async (req, res) => {
   }
 });
 
+// Submit Assignment
+app.post('/api/assignments/:assignmentId/submit', async (req, res) => {
+  try {
+    const { assignmentId } = req.params;
+    const { canvasUrl, apiToken, courseId, submissionData } = req.body;
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    if (!courseId) {
+      return res.status(400).json({ 
+        error: 'Course ID is required' 
+      });
+    }
+
+    if (!submissionData || !submissionData.body) {
+      return res.status(400).json({ 
+        error: 'Submission content is required' 
+      });
+    }
+
+    // Set credentials on the shared client
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
+    
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
+
+      const result = await canvasClient.submitAssignment(
+        parseInt(courseId),
+        parseInt(assignmentId),
+        submissionData
+      );
+      
+      if (result.error) {
+        return res.status(500).json({ error: result.error });
+      }
+
+      res.json({
+        success: true,
+        message: 'Assignment submitted successfully',
+        submission: result
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
+  } catch (error) {
+    console.error('Submit assignment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Course Material Endpoints
 app.get('/api/courses/:courseId/materials', async (req, res) => {
   try {

@@ -138,6 +138,30 @@ class CanvasMCPClient {
   async getSubmission(courseId, assignmentId, userId = 'self') {
     return this.makeRequest(`/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}`);
   }
+
+  // Submit an assignment
+  async submitAssignment(courseId, assignmentId, submissionData) {
+    const { submission_type, body, url } = submissionData;
+    
+    const payload = {
+      submission: {
+        submission_type: submission_type || 'online_text_entry'
+      }
+    };
+
+    // Add content based on submission type
+    if (submission_type === 'online_text_entry' && body) {
+      payload.submission.body = body;
+    } else if (submission_type === 'online_url' && url) {
+      payload.submission.url = url;
+    }
+
+    return this.makeRequest(
+      `/courses/${courseId}/assignments/${assignmentId}/submissions`,
+      'POST',
+      payload
+    );
+  }
 }
 
 // Singleton instance

@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Menu, X } from "lucide-react";
+import { Send, Sparkles, Menu, X, Download, Upload, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { sendChatMessage } from "@/lib/api";
+import { sendChatMessage, submitAssignmentToCanvas } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "react-router-dom";
 import ProgressTracker from "@/components/ProgressTracker";
+import { generateStudyGuidePDF, generateAssignmentDraftPDF } from "@/lib/pdfGenerator";
 
 interface Message {
   id: string;
@@ -42,6 +43,9 @@ const Astar = () => {
   const [sidebarOpen, setSidebarOpen] = useState(!!assignment); // Open if assignment exists
   const [notes, setNotes] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedDraft, setGeneratedDraft] = useState<string | null>(null);
+  const [generatedStudyGuide, setGeneratedStudyGuide] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -132,6 +136,9 @@ const Astar = () => {
         assignmentContext: assignment
       });
 
+      // Save the generated content
+      setGeneratedDraft(response.response);
+
       // Add the generated draft as a message
       const draftMessage: Message = {
         id: Date.now().toString(),
@@ -143,7 +150,7 @@ const Astar = () => {
       
       toast({
         title: "Draft Generated!",
-        description: "Review the draft below and make any necessary edits.",
+        description: "You can now submit to Canvas or download as PDF.",
       });
     } catch (error) {
       toast({
@@ -168,6 +175,9 @@ const Astar = () => {
         assignmentContext: assignment
       });
 
+      // Save the generated content
+      setGeneratedStudyGuide(response.response);
+
       // Add the study guide as a message
       const studyGuideMessage: Message = {
         id: Date.now().toString(),
@@ -179,7 +189,7 @@ const Astar = () => {
       
       toast({
         title: "Study Guide Generated!",
-        description: "Your personalized study guide is ready below.",
+        description: "Download as PDF below.",
       });
     } catch (error) {
       toast({
@@ -189,6 +199,69 @@ const Astar = () => {
       });
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadDraftPDF = () => {
+    if (!generatedDraft || !assignment) return;
+
+    generateAssignmentDraftPDF({
+      title: assignment.title,
+      content: generatedDraft,
+      subject: assignment.course,
+    });
+
+    toast({
+      title: "PDF Downloaded!",
+      description: "Check your downloads folder.",
+    });
+  };
+
+  const handleDownloadStudyGuidePDF = () => {
+    if (!generatedStudyGuide) return;
+
+    generateStudyGuidePDF({
+      title: assignment ? `${assignment.title} - Study Guide` : 'Study Guide',
+      content: generatedStudyGuide,
+      subject: assignment?.course,
+    });
+
+    toast({
+      title: "PDF Downloaded!",
+      description: "Check your downloads folder.",
+    });
+  };
+
+  const handleSubmitToCanvas = async () => {
+    if (!generatedDraft || !assignment) return;
+
+    setIsSubmitting(true);
+    try {
+      // Extract course ID from assignment (assuming it's stored)
+      // For now, we'll need to add courseId to the assignment interface
+      const courseId = (assignment as any).course_id || assignment.id.split('-')[0];
+
+      await submitAssignmentToCanvas(
+        assignment.id,
+        courseId,
+        generatedDraft
+      );
+
+      toast({
+        title: "Submitted to Canvas!",
+        description: `Your assignment "${assignment.title}" has been submitted successfully.`,
+      });
+
+      // Clear the draft after submission
+      setGeneratedDraft(null);
+    } catch (error) {
+      toast({
+        title: "Submission Failed",
+        description: error instanceof Error ? error.message : "Failed to submit to Canvas",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -344,6 +417,51 @@ const Astar = () => {
                 </div>
               </div>
             )}
+
+            {/* Action Buttons for Generated Content */}
+            {generatedDraft && assignment && (
+              <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Assignment Draft Ready
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    onClick={handleSubmitToCanvas}
+                    disabled={isSubmitting}
+                    className="flex-1 bg-gradient-primary text-white shadow-glow"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    {isSubmitting ? 'Submitting...' : 'Submit to Canvas'}
+                  </Button>
+                  <Button
+                    onClick={handleDownloadDraftPDF}
+                    variant="outline"
+                    className="flex-1"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download PDF
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {generatedStudyGuide && (
+              <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
+                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                  <FileText className="w-4 h-4 text-primary" />
+                  Study Guide Ready
+                </div>
+                <Button
+                  onClick={handleDownloadStudyGuidePDF}
+                  className="w-full bg-gradient-primary text-white shadow-glow"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Study Guide PDF
+                </Button>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
         </div>

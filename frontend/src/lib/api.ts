@@ -272,3 +272,41 @@ const getRandomCourseColor = (): string => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
+/**
+ * Submit assignment to Canvas
+ */
+export const submitAssignmentToCanvas = async (
+  assignmentId: string,
+  courseId: string,
+  content: string
+): Promise<any> => {
+  const { canvasUrl, apiToken } = getCanvasCredentials();
+
+  if (!apiToken) {
+    throw new Error('No Canvas API token found');
+  }
+
+  const response = await fetch(`${API_URL}/api/assignments/${assignmentId}/submit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      canvasUrl,
+      apiToken,
+      courseId,
+      submissionData: {
+        submission_type: 'online_text_entry',
+        body: content
+      }
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to submit assignment');
+  }
+
+  return response.json();
+};
+
