@@ -11,10 +11,11 @@ interface PDFOptions {
   author?: string;
   subject?: string;
   footer?: string;
+  knowledgeGraphImage?: string | null;
 }
 
 export const generateStudyGuidePDF = (options: PDFOptions): void => {
-  const { title, content, author = 'ASTAR', subject, footer } = options;
+  const { title, content, author = 'ASTAR', subject, footer, knowledgeGraphImage } = options;
   
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -61,6 +62,33 @@ export const generateStudyGuidePDF = (options: PDFOptions): void => {
   
   doc.text(`Generated: ${new Date().toLocaleDateString()}`, margin, yPosition);
   yPosition += 10;
+  
+  // Add Knowledge Graph if available
+  if (knowledgeGraphImage) {
+    yPosition += 5;
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
+    doc.text('🧠 Knowledge Map', margin, yPosition);
+    yPosition += 8;
+    
+    // Add the image
+    const imgWidth = maxWidth;
+    const imgHeight = maxWidth; // Keep it square
+    
+    if (yPosition + imgHeight > pageHeight - margin) {
+      doc.addPage();
+      yPosition = margin;
+    }
+    
+    doc.addImage(knowledgeGraphImage, 'PNG', margin, yPosition, imgWidth, imgHeight);
+    yPosition += imgHeight + 10;
+    
+    // Add separator
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 10;
+  }
   
   // Separator line
   doc.setDrawColor(200, 200, 200);

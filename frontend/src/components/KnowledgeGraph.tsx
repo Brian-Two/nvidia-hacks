@@ -127,7 +127,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
       </div>
 
       {/* SVG Graph */}
-      <svg className="w-full h-full pt-14" viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
+      <svg id="knowledge-graph-svg" className="w-full h-full pt-14" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
         {/* Render connections first (behind nodes) */}
         <g>{renderConnections()}</g>
 

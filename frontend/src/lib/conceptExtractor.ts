@@ -73,9 +73,9 @@ export const generateGraphLayout = (concepts: ConceptNode[]): ConceptNode[] => {
   if (concepts.length === 0) return [];
 
   const updatedConcepts = [...concepts];
-  const centerX = 200;
-  const centerY = 200;
-  const radius = 120;
+  const centerX = 300;
+  const centerY = 300;
+  const radius = 200;
   const layers = Math.ceil(Math.sqrt(concepts.length));
 
   // Group by depth (how many connections they have)
@@ -234,5 +234,61 @@ export const loadKnowledgeGraph = (): ConceptNode[] => {
  */
 export const clearKnowledgeGraph = (): void => {
   localStorage.removeItem('astar_knowledge_graph');
+};
+
+/**
+ * Export knowledge graph as image data URL
+ */
+export const exportKnowledgeGraphAsImage = async (): Promise<string | null> => {
+  try {
+    const svgElement = document.getElementById('knowledge-graph-svg');
+    if (!svgElement) return null;
+
+    // Clone the SVG to modify it
+    const clonedSvg = svgElement.cloneNode(true) as SVGElement;
+    
+    // Add white background
+    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    rect.setAttribute('width', '100%');
+    rect.setAttribute('height', '100%');
+    rect.setAttribute('fill', '#0F1419'); // Dark background
+    clonedSvg.insertBefore(rect, clonedSvg.firstChild);
+
+    // Get SVG string
+    const serializer = new XMLSerializer();
+    const svgString = serializer.serializeToString(clonedSvg);
+    
+    // Convert to data URL
+    const svgBlob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    
+    // Create canvas to convert to PNG
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 600;
+        canvas.height = 600;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = '#0F1419';
+          ctx.fillRect(0, 0, 600, 600);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/png'));
+        } else {
+          resolve(null);
+        }
+        URL.revokeObjectURL(url);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(null);
+      };
+      img.src = url;
+    });
+  } catch (error) {
+    console.error('Failed to export knowledge graph:', error);
+    return null;
+  }
 };
 

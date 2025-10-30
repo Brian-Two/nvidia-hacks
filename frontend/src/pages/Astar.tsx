@@ -11,7 +11,7 @@ import { formatLLMResponse } from "@/lib/messageFormatter";
 import FormattedMessage from "@/components/FormattedMessage";
 import KnowledgeGraph, { ConceptNode } from "@/components/KnowledgeGraph";
 import StepSolver, { ProblemStep } from "@/components/StepSolver";
-import { extractConcepts, addConceptsToGraph, saveKnowledgeGraph, loadKnowledgeGraph, updateConceptStatus } from "@/lib/conceptExtractor";
+import { extractConcepts, addConceptsToGraph, saveKnowledgeGraph, loadKnowledgeGraph, updateConceptStatus, exportKnowledgeGraphAsImage } from "@/lib/conceptExtractor";
 
 interface Message {
   id: string;
@@ -516,13 +516,17 @@ const Astar = () => {
     });
   };
 
-  const handleDownloadStudyGuidePDF = () => {
+  const handleDownloadStudyGuidePDF = async () => {
     if (!generatedStudyGuide) return;
+
+    // Export knowledge graph as image if available
+    const graphImage = concepts.length > 0 ? await exportKnowledgeGraphAsImage() : null;
 
     generateStudyGuidePDF({
       title: assignment ? `${assignment.title} - Study Guide` : 'Study Guide',
       content: generatedStudyGuide,
       subject: assignment?.course,
+      knowledgeGraphImage: graphImage,
     });
 
     toast({
@@ -839,7 +843,7 @@ const Astar = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Knowledge Graph Panel (if enabled) */}
           {showKnowledgeGraph && (
-            <div className="w-80 border-r border-border">
+            <div className="w-[500px] border-r border-border">
               <KnowledgeGraph
                 concepts={concepts}
                 currentConcept={currentConcept}
