@@ -310,3 +310,90 @@ export const submitAssignmentToCanvas = async (
   return response.json();
 };
 
+/**
+ * Fetch course materials (modules, pages, files)
+ */
+export const getCourseMaterials = async (courseId: string): Promise<any> => {
+  const { canvasUrl, apiToken } = getCanvasCredentials();
+
+  if (!apiToken) {
+    throw new Error('No Canvas API token found');
+  }
+
+  const response = await fetch(`${API_URL}/api/courses/${courseId}/materials`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      canvasUrl,
+      apiToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch course materials');
+  }
+
+  return response.json();
+};
+
+/**
+ * Fetch course syllabus
+ */
+export const getCourseSyllabus = async (courseId: string): Promise<any> => {
+  const { canvasUrl, apiToken } = getCanvasCredentials();
+
+  if (!apiToken) {
+    throw new Error('No Canvas API token found');
+  }
+
+  const response = await fetch(`${API_URL}/api/courses/${courseId}/syllabus`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      canvasUrl,
+      apiToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch syllabus');
+  }
+
+  return response.json();
+};
+
+/**
+ * Fetch page content
+ */
+export const getPageContent = async (courseId: string, pageUrl: string): Promise<any> => {
+  const { canvasUrl, apiToken } = getCanvasCredentials();
+
+  if (!apiToken) {
+    throw new Error('No Canvas API token found');
+  }
+
+  const response = await fetch(`${API_URL}/api/courses/${courseId}/pages/${pageUrl}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      canvasUrl,
+      apiToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch page content');
+  }
+
+  return response.json();
+};
+
