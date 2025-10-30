@@ -51,7 +51,15 @@ class CanvasMCPClient {
   // Get upcoming assignments across all courses
   async getUpcomingAssignments(limit = 20) {
     const courses = await this.getCourses();
-    if (courses.error) return courses;
+    if (courses.error) {
+      console.error('Failed to get courses:', courses.error);
+      return courses;
+    }
+
+    if (!Array.isArray(courses)) {
+      console.error('getCourses() did not return an array:', courses);
+      return { error: 'Invalid response from Canvas API' };
+    }
 
     const allAssignments = [];
     

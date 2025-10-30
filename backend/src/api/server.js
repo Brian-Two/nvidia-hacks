@@ -263,6 +263,10 @@ app.post('/api/assignments', async (req, res) => {
   try {
     const { canvasUrl, apiToken, limit = 20 } = req.body;
     
+    console.log('📚 Fetching assignments...');
+    console.log('  Canvas URL:', canvasUrl);
+    console.log('  Has Token:', !!apiToken);
+    
     if (!apiToken) {
       return res.status(400).json({ 
         error: 'Canvas API token is required' 
@@ -281,11 +285,16 @@ app.post('/api/assignments', async (req, res) => {
           : `${canvasUrl}/api/v1`;
       }
 
+      console.log('  Using Base URL:', canvasClient.baseUrl);
+
       const assignments = await canvasClient.getUpcomingAssignments(limit);
       
       if (assignments.error) {
+        console.error('❌ Canvas API Error:', assignments.error);
         return res.status(500).json({ error: assignments.error });
       }
+
+      console.log('✅ Found', assignments.length, 'assignments');
 
       res.json({
         success: true,
@@ -298,7 +307,7 @@ app.post('/api/assignments', async (req, res) => {
       canvasClient.baseUrl = originalBaseUrl;
     }
   } catch (error) {
-    console.error('Get assignments error:', error);
+    console.error('❌ Get assignments error:', error);
     res.status(500).json({ error: error.message });
   }
 });
