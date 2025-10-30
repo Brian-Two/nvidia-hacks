@@ -581,6 +581,170 @@ app.use((err, req, res, next) => {
   });
 });
 
+// ==============================================================================
+// COURSE MATERIALS
+// ==============================================================================
+
+// Get course materials (modules, pages, files)
+app.post('/api/courses/:courseId/materials', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { canvasUrl, apiToken } = req.body;
+    
+    console.log(`📚 Fetching materials for course ${courseId}...`);
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    // Set credentials
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
+    
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
+
+      const materials = await canvasClient.getCourseMaterials(courseId);
+      
+      console.log('✅ Fetched course materials:', {
+        modules: materials.modules?.length || 0,
+        pages: materials.pages?.length || 0,
+        files: materials.files?.length || 0
+      });
+
+      res.json({
+        success: true,
+        courseId,
+        materials
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
+  } catch (error) {
+    console.error('❌ Error fetching course materials:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch course materials',
+      details: error.message 
+    });
+  }
+});
+
+// Get course syllabus
+app.post('/api/courses/:courseId/syllabus', async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const { canvasUrl, apiToken } = req.body;
+    
+    console.log(`📄 Fetching syllabus for course ${courseId}...`);
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    // Set credentials
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
+    
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
+
+      const syllabus = await canvasClient.getCourseSyllabus(courseId);
+      
+      if (syllabus.error) {
+        console.error('❌ Canvas API Error:', syllabus.error);
+        return res.status(500).json({ error: syllabus.error });
+      }
+
+      console.log('✅ Fetched syllabus');
+
+      res.json({
+        success: true,
+        courseId,
+        syllabus
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
+  } catch (error) {
+    console.error('❌ Error fetching syllabus:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch syllabus',
+      details: error.message 
+    });
+  }
+});
+
+// Get page content
+app.post('/api/courses/:courseId/pages/:pageUrl', async (req, res) => {
+  try {
+    const { courseId, pageUrl } = req.params;
+    const { canvasUrl, apiToken } = req.body;
+    
+    console.log(`📄 Fetching page ${pageUrl} from course ${courseId}...`);
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    // Set credentials
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
+    
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
+
+      const page = await canvasClient.getPageContent(courseId, pageUrl);
+      
+      if (page.error) {
+        console.error('❌ Canvas API Error:', page.error);
+        return res.status(500).json({ error: page.error });
+      }
+
+      console.log('✅ Fetched page content');
+
+      res.json({
+        success: true,
+        page
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
+  } catch (error) {
+    console.error('❌ Error fetching page:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch page content',
+      details: error.message 
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ 

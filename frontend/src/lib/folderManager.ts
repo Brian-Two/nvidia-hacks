@@ -1,4 +1,5 @@
 import { ConceptNode } from '@/components/KnowledgeGraph';
+import { ProblemStep } from '@/components/StepSolver';
 
 export interface MindMap {
   id: string;
@@ -11,6 +12,30 @@ export interface MindMap {
   assignmentTitle?: string;
 }
 
+export interface Document {
+  id: string;
+  name: string;
+  type: 'study_guide' | 'assignment_draft' | 'step_solver';
+  content: string;
+  folderId: string;
+  assignmentId?: string;
+  assignmentTitle?: string;
+  createdAt: Date;
+  stepSolverData?: ProblemStep[]; // For step solver sessions
+}
+
+export interface CourseMaterial {
+  id: string;
+  name: string;
+  type: 'syllabus' | 'file' | 'page' | 'module' | 'textbook';
+  content?: string;
+  url?: string;
+  folderId: string;
+  canvasId?: string;
+  createdAt: Date;
+  fileType?: string; // pdf, doc, etc.
+}
+
 export interface Folder {
   id: string;
   name: string;
@@ -19,11 +44,15 @@ export interface Folder {
   courseName?: string;
   createdAt: Date;
   mindMaps: string[]; // Array of mindmap IDs
+  documents: string[]; // Array of document IDs
+  courseMaterials: string[]; // Array of course material IDs
 }
 
 const FOLDERS_KEY = 'astar_folders';
 const MINDMAPS_KEY = 'astar_mindmaps';
 const CURRENT_MINDMAP_KEY = 'astar_current_mindmap';
+const DOCUMENTS_KEY = 'astar_documents';
+const COURSE_MATERIALS_KEY = 'astar_course_materials';
 
 // Folder Management
 export const getFolders = (): Folder[] => {
@@ -53,6 +82,8 @@ export const createFolder = (name: string, courseId?: string, courseName?: strin
     courseName,
     createdAt: new Date(),
     mindMaps: [],
+    documents: [],
+    courseMaterials: [],
   };
 
   const folders = getFolders();
@@ -211,6 +242,148 @@ export const getOrCreateFolderForAssignment = (courseId: string, courseName: str
   }
   
   return folder;
+};
+
+// Document Management
+export const getDocuments = (): Document[] => {
+  try {
+    const saved = localStorage.getItem(DOCUMENTS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Failed to load documents:', error);
+    return [];
+  }
+};
+
+export const saveDocuments = (documents: Document[]): void => {
+  try {
+    localStorage.setItem(DOCUMENTS_KEY, JSON.stringify(documents));
+  } catch (error) {
+    console.error('Failed to save documents:', error);
+  }
+};
+
+export const createDocument = (
+  name: string,
+  type: Document['type'],
+  content: string,
+  folderId: string,
+  assignmentId?: string,
+  assignmentTitle?: string,
+  stepSolverData?: ProblemStep[]
+): Document => {
+  const newDocument: Document = {
+    id: `doc-${Date.now()}`,
+    name,
+    type,
+    content,
+    folderId,
+    assignmentId,
+    assignmentTitle,
+    createdAt: new Date(),
+    stepSolverData,
+  };
+
+  const documents = getDocuments();
+  documents.push(newDocument);
+  saveDocuments(documents);
+
+  // Add to folder's document list
+  const folders = getFolders();
+  const folder = folders.find(f => f.id === folderId);
+  if (folder) {
+    folder.documents.push(newDocument.id);
+    saveFolders(folders);
+  }
+
+  return newDocument;
+};
+
+export const getDocumentsByFolder = (folderId: string): Document[] => {
+  return getDocuments().filter(d => d.folderId === folderId);
+};
+
+export const deleteDocument = (documentId: string): void => {
+  const documents = getDocuments().filter(d => d.id !== documentId);
+  saveDocuments(documents);
+
+  // Remove from folder
+  const folders = getFolders();
+  folders.forEach(folder => {
+    folder.documents = folder.documents.filter(id => id !== documentId);
+  });
+  saveFolders(folders);
+};
+
+// Course Material Management
+export const getCourseMaterials = (): CourseMaterial[] => {
+  try {
+    const saved = localStorage.getItem(COURSE_MATERIALS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Failed to load course materials:', error);
+    return [];
+  }
+};
+
+export const saveCourseMaterials = (materials: CourseMaterial[]): void => {
+  try {
+    localStorage.setItem(COURSE_MATERIALS_KEY, JSON.stringify(materials));
+  } catch (error) {
+    console.error('Failed to save course materials:', error);
+  }
+};
+
+export const createCourseMaterial = (
+  name: string,
+  type: CourseMaterial['type'],
+  folderId: string,
+  content?: string,
+  url?: string,
+  canvasId?: string,
+  fileType?: string
+): CourseMaterial => {
+  const newMaterial: CourseMaterial = {
+    id: `material-${Date.now()}`,
+    name,
+    type,
+    content,
+    url,
+    folderId,
+    canvasId,
+    createdAt: new Date(),
+    fileType,
+  };
+
+  const materials = getCourseMaterials();
+  materials.push(newMaterial);
+  saveCourseMaterials(materials);
+
+  // Add to folder's course materials list
+  const folders = getFolders();
+  const folder = folders.find(f => f.id === folderId);
+  if (folder) {
+    folder.courseMaterials.push(newMaterial.id);
+    saveFolders(folders);
+  }
+
+  return newMaterial;
+};
+
+export const getCourseMaterialsByFolder = (folderId: string): CourseMaterial[] => {
+  return getCourseMaterials().filter(m => m.folderId === folderId);
+};
+
+export const deleteCourseMaterial = (materialId: string): void => {
+  const materials = getCourseMaterials().filter(m => m.id !== materialId);
+  saveCourseMaterials(materials);
+
+  // Remove from folder
+  const folders = getFolders();
+  folders.forEach(folder => {
+    folder.courseMaterials = folder.courseMaterials.filter(id => id !== materialId);
+  });
+  saveFolders(folders);
 };
 
 // Utility function for random colors
