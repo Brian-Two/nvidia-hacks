@@ -872,11 +872,6 @@ const Astar = () => {
                           message.role === "user" ? "justify-end" : "justify-start"
                         }`}
                       >
-                        {message.role === "assistant" && (
-                          <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
-                            <Sparkles className="w-5 h-5 text-white" />
-                          </div>
-                        )}
                         <div
                           className={`max-w-[80%] rounded-xl px-4 py-3 ${
                             message.role === "user"
@@ -898,9 +893,6 @@ const Astar = () => {
                     ))}
                     {isTyping && (
                       <div className="flex justify-start">
-                        <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
-                          <Sparkles className="w-5 h-5 text-white" />
-                        </div>
                         <div className="bg-card border border-primary/20 rounded-xl px-4 py-3">
                           <div className="flex gap-1">
                             <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
