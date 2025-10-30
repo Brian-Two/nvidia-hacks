@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Menu, X, Download, Upload, FileText, Plus, Trash2, Link2, FileUp, Type } from "lucide-react";
+import { Send, Sparkles, Menu, X, Download, Upload, FileText, Plus, Trash2, Link2, FileUp, Type, Brain, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendChatMessage, submitAssignmentToCanvas } from "@/lib/api";
@@ -9,6 +9,9 @@ import ProgressTracker from "@/components/ProgressTracker";
 import { generateStudyGuidePDF, generateAssignmentDraftPDF } from "@/lib/pdfGenerator";
 import { formatLLMResponse } from "@/lib/messageFormatter";
 import FormattedMessage from "@/components/FormattedMessage";
+import KnowledgeGraph, { ConceptNode } from "@/components/KnowledgeGraph";
+import StepSolver, { ProblemStep } from "@/components/StepSolver";
+import { extractConcepts, addConceptsToGraph, saveKnowledgeGraph, loadKnowledgeGraph, updateConceptStatus } from "@/lib/conceptExtractor";
 
 interface Message {
   id: string;
@@ -67,6 +70,14 @@ const Astar = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
+  // Knowledge Graph & Step Solver state
+  const [showKnowledgeGraph, setShowKnowledgeGraph] = useState(true);
+  const [concepts, setConcepts] = useState<ConceptNode[]>([]);
+  const [currentConcept, setCurrentConcept] = useState<string | undefined>();
+  const [stepMode, setStepMode] = useState(false);
+  const [problemSteps, setProblemSteps] = useState<ProblemStep[]>([]);
+  const [currentStepIndex, setCurrentStepIndex] = useState(0);
+
   // Progress tracking
   const messageCount = Math.floor((messages.length - 1) / 2); // User messages only
   const targetMessages = 10; // Target number of exchanges for completion
@@ -80,6 +91,21 @@ const Astar = () => {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Load knowledge graph from localStorage
+  useEffect(() => {
+    const savedConcepts = loadKnowledgeGraph();
+    if (savedConcepts.length > 0) {
+      setConcepts(savedConcepts);
+    }
+  }, []);
+
+  // Save knowledge graph whenever it changes
+  useEffect(() => {
+    if (concepts.length > 0) {
+      saveKnowledgeGraph(concepts);
+    }
+  }, [concepts]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -121,6 +147,13 @@ const Astar = () => {
 
       // Format the LLM response (strip <think> tags, extract questions)
       const formatted = formatLLMResponse(response.response);
+
+      // Extract concepts from LLM response and update knowledge graph
+      const extractedConcepts = extractConcepts(response.response, concepts);
+      if (extractedConcepts.length > 0) {
+        const updatedConcepts = addConceptsToGraph(concepts, extractedConcepts, 'mentioned');
+        setConcepts(updatedConcepts);
+      }
 
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -266,6 +299,126 @@ const Astar = () => {
       title: "Context Removed",
       description: "Item removed from context",
     });
+  };
+
+  // Step Solver handlers
+  const handleAnswerSubmit = async (stepId: string, answer: string) => {
+    // Update step with user answer
+    const updatedSteps = problemSteps.map(step =>
+      step.id === stepId ? { ...step, userAnswer: answer } : step
+    );
+    setProblemSteps(updatedSteps);
+
+    // Send to LLM for evaluation
+    try {
+      const response = await sendChatMessage({
+        message: `Step ${problemSteps[currentStepIndex].stepNumber}: My answer is: ${answer}. Is this correct?`,
+        conversationHistory: messages.map(m => ({ role: m.role, content: m.content })),
+        assignmentContext: assignment
+      });
+
+      // Parse LLM response for correctness
+      const isCorrect = response.response.toLowerCase().includes('correct') || 
+                       response.response.toLowerCase().includes('right') ||
+                       response.response.toLowerCase().includes('yes');
+
+      // Update step with feedback
+      const finalSteps = updatedSteps.map(step =>
+        step.id === stepId
+          ? {
+              ...step,
+              isCorrect,
+              feedback: response.response,
+            }
+          : step
+      );
+      setProblemSteps(finalSteps);
+
+      // If correct, update concept status to in-progress or mastered
+      const currentStep = problemSteps[currentStepIndex];
+      if (isCorrect && currentStep.conceptsIntroduced.length > 0) {
+        let updatedConcepts = concepts;
+        currentStep.conceptsIntroduced.forEach(conceptLabel => {
+          updatedConcepts = updateConceptStatus(
+            updatedConcepts,
+            concepts.find(c => c.label === conceptLabel)?.id || '',
+            'in-progress'
+          );
+        });
+        setConcepts(updatedConcepts);
+      }
+    } catch (error) {
+      console.error('Error checking answer:', error);
+      toast({
+        title: "Error",
+        description: "Failed to check answer",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleHintRequest = async (stepId: string) => {
+    const step = problemSteps.find(s => s.id === stepId);
+    if (!step || step.hintsUsed >= step.maxHints) return;
+
+    // Update hints used
+    const updatedSteps = problemSteps.map(s =>
+      s.id === stepId ? { ...s, hintsUsed: s.hintsUsed + 1 } : s
+    );
+    setProblemSteps(updatedSteps);
+
+    // Request hint from LLM
+    try {
+      const response = await sendChatMessage({
+        message: `I need a hint for: ${step.prompt}`,
+        conversationHistory: messages.map(m => ({ role: m.role, content: m.content })),
+        assignmentContext: assignment
+      });
+
+      toast({
+        title: `Hint ${step.hintsUsed + 1}/${step.maxHints}`,
+        description: response.response,
+      });
+    } catch (error) {
+      console.error('Error getting hint:', error);
+    }
+  };
+
+  const handleNextStep = () => {
+    if (currentStepIndex < problemSteps.length - 1) {
+      setCurrentStepIndex(currentStepIndex + 1);
+      
+      // Mark completed concepts as mastered
+      const completedStep = problemSteps[currentStepIndex];
+      if (completedStep.isCorrect && completedStep.conceptsIntroduced.length > 0) {
+        let updatedConcepts = concepts;
+        completedStep.conceptsIntroduced.forEach(conceptLabel => {
+          const concept = concepts.find(c => c.label === conceptLabel);
+          if (concept) {
+            updatedConcepts = updateConceptStatus(updatedConcepts, concept.id, 'mastered');
+          }
+        });
+        setConcepts(updatedConcepts);
+      }
+    } else {
+      // All steps completed!
+      toast({
+        title: "Problem Solved!",
+        description: "You've completed all steps. Great work!",
+      });
+    }
+  };
+
+  const handleConceptClick = (conceptId: string) => {
+    const concept = concepts.find(c => c.id === conceptId);
+    if (concept) {
+      setCurrentConcept(conceptId);
+      // Could trigger a message asking about this concept
+      toast({
+        title: "Concept Selected",
+        description: `Click again to ask ASTAR about "${concept.label}"`,
+      });
+    }
   };
 
   const handleGenerateDraft = async () => {
@@ -657,102 +810,156 @@ const Astar = () => {
             </div>
             <h1 className="text-xl font-bold">ASTAR Workbench</h1>
           </div>
+
+          {/* Mode Toggle Buttons */}
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant={showKnowledgeGraph ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowKnowledgeGraph(!showKnowledgeGraph)}
+              className="h-8"
+            >
+              <Brain className="w-4 h-4 mr-1" />
+              Mind Map
+            </Button>
+            <Button
+              variant={stepMode ? "default" : "outline"}
+              size="sm"
+              onClick={() => setStepMode(!stepMode)}
+              className="h-8"
+              disabled={problemSteps.length === 0 && !stepMode}
+            >
+              <Zap className="w-4 h-4 mr-1" />
+              Step Mode
+            </Button>
+          </div>
         </div>
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
-          <div className="max-w-3xl mx-auto space-y-6">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
-                {message.role === "assistant" && (
-                  <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
-                    <Sparkles className="w-5 h-5 text-white" />
+        {/* Main Content Area with optional Knowledge Graph */}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Knowledge Graph Panel (if enabled) */}
+          {showKnowledgeGraph && (
+            <div className="w-80 border-r border-border">
+              <KnowledgeGraph
+                concepts={concepts}
+                currentConcept={currentConcept}
+                onConceptClick={handleConceptClick}
+              />
+            </div>
+          )}
+
+          {/* Main Content: Step Solver or Chat Messages */}
+          <div className="flex-1 flex flex-col">
+            {stepMode && problemSteps.length > 0 ? (
+              /* Step-by-Step Problem Solver */
+              <StepSolver
+                steps={problemSteps}
+                currentStepIndex={currentStepIndex}
+                onAnswerSubmit={handleAnswerSubmit}
+                onHintRequest={handleHintRequest}
+                onNextStep={handleNextStep}
+                isCheckingAnswer={isTyping}
+              />
+            ) : (
+              /* Normal Chat Interface */
+              <>
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+                  <div className="max-w-3xl mx-auto space-y-6">
+                    {messages.map((message) => (
+                      <div
+                        key={message.id}
+                        className={`flex ${
+                          message.role === "user" ? "justify-end" : "justify-start"
+                        }`}
+                      >
+                        {message.role === "assistant" && (
+                          <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
+                            <Sparkles className="w-5 h-5 text-white" />
+                          </div>
+                        )}
+                        <div
+                          className={`max-w-[80%] rounded-xl px-4 py-3 ${
+                            message.role === "user"
+                              ? "bg-gradient-primary text-white shadow-glow"
+                              : "bg-card border border-primary/20 text-foreground"
+                          }`}
+                        >
+                          {message.role === "user" ? (
+                            <p className="text-sm leading-relaxed">{message.content}</p>
+                          ) : (
+                            <FormattedMessage
+                              content={message.formattedContent || message.content}
+                              questions={message.questions || []}
+                              hasQuestions={(message.questions?.length || 0) > 0}
+                            />
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {isTyping && (
+                      <div className="flex justify-start">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
+                          <Sparkles className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="bg-card border border-primary/20 rounded-xl px-4 py-3">
+                          <div className="flex gap-1">
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:0.2s]" />
+                            <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:0.4s]" />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Action Buttons for Generated Content */}
+                    {generatedDraft && assignment && (
+                      <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <FileText className="w-4 h-4 text-primary" />
+                          Assignment Draft Ready
+                        </div>
+                        <div className="flex gap-3">
+                          <Button
+                            onClick={handleSubmitToCanvas}
+                            disabled={isSubmitting}
+                            className="flex-1 bg-gradient-primary text-white shadow-glow"
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            {isSubmitting ? 'Submitting...' : 'Submit to Canvas'}
+                          </Button>
+                          <Button
+                            onClick={handleDownloadDraftPDF}
+                            variant="outline"
+                            className="flex-1"
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download PDF
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {generatedStudyGuide && (
+                      <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <FileText className="w-4 h-4 text-primary" />
+                          Study Guide Ready
+                        </div>
+                        <Button
+                          onClick={handleDownloadStudyGuidePDF}
+                          className="w-full bg-gradient-primary text-white shadow-glow"
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download Study Guide PDF
+                        </Button>
+                      </div>
+                    )}
+
+                    <div ref={messagesEndRef} />
                   </div>
-                )}
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 ${
-                    message.role === "user"
-                      ? "bg-gradient-primary text-white shadow-glow"
-                      : "bg-card border border-primary/20 text-foreground"
-                  }`}
-                >
-                  {message.role === "user" ? (
-                    <p className="text-sm leading-relaxed">{message.content}</p>
-                  ) : (
-                    <FormattedMessage
-                      content={message.formattedContent || message.content}
-                      questions={message.questions || []}
-                      hasQuestions={(message.questions?.length || 0) > 0}
-                    />
-                  )}
                 </div>
-              </div>
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center shadow-glow mr-3 flex-shrink-0">
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <div className="bg-card border border-primary/20 rounded-xl px-4 py-3">
-                  <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce" />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:0.2s]" />
-                    <div className="w-2 h-2 bg-muted-foreground rounded-full animate-bounce [animation-delay:0.4s]" />
-                  </div>
-                </div>
-              </div>
+              </>
             )}
-
-            {/* Action Buttons for Generated Content */}
-            {generatedDraft && assignment && (
-              <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Assignment Draft Ready
-                </div>
-                <div className="flex gap-3">
-                  <Button
-                    onClick={handleSubmitToCanvas}
-                    disabled={isSubmitting}
-                    className="flex-1 bg-gradient-primary text-white shadow-glow"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    {isSubmitting ? 'Submitting...' : 'Submit to Canvas'}
-                  </Button>
-                  <Button
-                    onClick={handleDownloadDraftPDF}
-                    variant="outline"
-                    className="flex-1"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download PDF
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {generatedStudyGuide && (
-              <div className="flex flex-col gap-3 p-4 bg-card/50 border border-primary/30 rounded-xl">
-                <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <FileText className="w-4 h-4 text-primary" />
-                  Study Guide Ready
-                </div>
-                <Button
-                  onClick={handleDownloadStudyGuidePDF}
-                  className="w-full bg-gradient-primary text-white shadow-glow"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Download Study Guide PDF
-                </Button>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
           </div>
         </div>
 
