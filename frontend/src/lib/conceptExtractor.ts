@@ -73,9 +73,9 @@ export const generateGraphLayout = (concepts: ConceptNode[]): ConceptNode[] => {
   if (concepts.length === 0) return [];
 
   const updatedConcepts = [...concepts];
-  const centerX = 300;
-  const centerY = 300;
-  const radius = 200;
+  const centerX = 200;
+  const centerY = 200;
+  const radius = 120;
   const layers = Math.ceil(Math.sqrt(concepts.length));
 
   // Group by depth (how many connections they have)

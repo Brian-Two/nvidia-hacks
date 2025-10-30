@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import Board from "./pages/Board";
 import Astar from "./pages/Astar";
+import Folders from "./pages/Folders";
 import Connections from "./pages/Connections";
 import Onboarding from "./pages/Onboarding";
 import NotFound from "./pages/NotFound";
@@ -47,6 +48,16 @@ const App = () => (
               <ProtectedRoute>
                 <Layout>
                   <Astar />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/folders"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Folders />
                 </Layout>
               </ProtectedRoute>
             }

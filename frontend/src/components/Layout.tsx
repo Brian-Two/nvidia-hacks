@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Sparkles, Settings } from "lucide-react";
+import { LayoutDashboard, Sparkles, FolderOpen, Settings } from "lucide-react";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,6 +12,7 @@ const Layout = ({ children }: LayoutProps) => {
   const navItems = [
     { path: "/", icon: LayoutDashboard, label: "Board" },
     { path: "/astar", icon: Sparkles, label: "ASTAR" },
+    { path: "/folders", icon: FolderOpen, label: "Folders" },
     { path: "/connections", icon: Settings, label: "Connections" },
   ];
 

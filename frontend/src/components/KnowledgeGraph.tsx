@@ -1,6 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Check, Lock, Sparkles, Circle, Brain } from 'lucide-react';
+import { Check, Lock, Sparkles, Circle, Brain, Plus } from 'lucide-react';
 import { Button } from './ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export interface ConceptNode {
   id: string;
@@ -17,6 +24,10 @@ interface KnowledgeGraphProps {
   currentConcept?: string;
   onConceptClick?: (conceptId: string) => void;
   className?: string;
+  availableMindMaps?: Array<{ id: string; name: string }>;
+  currentMindMapId?: string;
+  onMindMapChange?: (mindMapId: string) => void;
+  onCreateNewMindMap?: () => void;
 }
 
 const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
@@ -24,6 +35,10 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
   currentConcept,
   onConceptClick,
   className = '',
+  availableMindMaps = [],
+  currentMindMapId,
+  onMindMapChange,
+  onCreateNewMindMap,
 }) => {
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [animatingNodes, setAnimatingNodes] = useState<Set<string>>(new Set());
@@ -117,17 +132,46 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
     <div className={`relative w-full h-full bg-background/50 rounded-lg border border-border overflow-hidden ${className}`}>
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 p-3 bg-card/80 backdrop-blur-sm border-b border-border z-10">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-2">
           <Brain className="w-5 h-5 text-primary" />
           <h3 className="font-semibold text-sm">Knowledge Map</h3>
           <span className="ml-auto text-xs text-muted-foreground">
             {concepts.filter(c => c.status === 'mastered').length} mastered
           </span>
         </div>
+        
+        {/* Mind Map Selector */}
+        {availableMindMaps.length > 0 && (
+          <div className="flex items-center gap-2">
+            <Select value={currentMindMapId || 'current'} onValueChange={onMindMapChange}>
+              <SelectTrigger className="h-7 text-xs flex-1">
+                <SelectValue placeholder="Select mind map" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="current">Current Session</SelectItem>
+                {availableMindMaps.map(map => (
+                  <SelectItem key={map.id} value={map.id}>
+                    {map.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {onCreateNewMindMap && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                onClick={onCreateNewMindMap}
+              >
+                <Plus className="w-3 h-3" />
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* SVG Graph */}
-      <svg id="knowledge-graph-svg" className="w-full h-full pt-14" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid meet">
+      <svg id="knowledge-graph-svg" className="w-full h-full" style={{ paddingTop: availableMindMaps.length > 0 ? '90px' : '60px' }} viewBox="0 0 400 400" preserveAspectRatio="xMidYMid meet">
         {/* Render connections first (behind nodes) */}
         <g>{renderConnections()}</g>
 

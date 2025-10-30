@@ -12,6 +12,16 @@ import FormattedMessage from "@/components/FormattedMessage";
 import KnowledgeGraph, { ConceptNode } from "@/components/KnowledgeGraph";
 import StepSolver, { ProblemStep } from "@/components/StepSolver";
 import { extractConcepts, addConceptsToGraph, saveKnowledgeGraph, loadKnowledgeGraph, updateConceptStatus, exportKnowledgeGraphAsImage } from "@/lib/conceptExtractor";
+import { 
+  getMindMaps, 
+  getMindMapsByFolder, 
+  createMindMap, 
+  updateMindMap, 
+  getOrCreateFolderForAssignment,
+  setCurrentMindMapId,
+  getCurrentMindMapId,
+  getMindMapById 
+} from "@/lib/folderManager";
 
 interface Message {
   id: string;
@@ -30,6 +40,7 @@ interface Assignment {
   dueDate: string;
   daysUntilDue: number;
   points: number;
+  course_id?: number;
 }
 
 interface ContextItem {
@@ -77,6 +88,11 @@ const Astar = () => {
   const [stepMode, setStepMode] = useState(false);
   const [problemSteps, setProblemSteps] = useState<ProblemStep[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
+  
+  // Folder & MindMap state
+  const [currentMindMapId, setCurrentMindMapIdState] = useState<string | null>(null);
+  const [availableMindMaps, setAvailableMindMaps] = useState<Array<{ id: string; name: string }>>([]);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
 
   // Progress tracking
   const messageCount = Math.floor((messages.length - 1) / 2); // User messages only
@@ -92,18 +108,88 @@ const Astar = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Load knowledge graph from localStorage
+  // Initialize folder and mindmap system
   useEffect(() => {
-    const savedConcepts = loadKnowledgeGraph();
-    if (savedConcepts.length > 0) {
-      setConcepts(savedConcepts);
+    // Check if coming from Folders page with a specific mindmap
+    const mindMapIdFromState = (location.state as { mindMapId?: string })?.mindMapId;
+    
+    if (mindMapIdFromState) {
+      // Load the specific mindmap
+      const mindMap = getMindMapById(mindMapIdFromState);
+      if (mindMap) {
+        setConcepts(mindMap.concepts);
+        setCurrentMindMapIdState(mindMap.id);
+        setCurrentFolderId(mindMap.folderId);
+        setCurrentMindMapId(mindMap.id);
+        
+        toast({
+          title: "Mind Map Loaded",
+          description: `Loaded "${mindMap.name}"`,
+        });
+      }
+    } else if (assignment) {
+      // Auto-create or get folder for this assignment
+      const folder = getOrCreateFolderForAssignment(
+        assignment.course_id?.toString() || assignment.id.split('-')[0],
+        assignment.course
+      );
+      setCurrentFolderId(folder.id);
+      
+      // Load available mindmaps from this folder
+      const folderMindMaps = getMindMapsByFolder(folder.id);
+      setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
+      
+      // Check if there's already a mindmap for this assignment
+      const existingMindMap = folderMindMaps.find(m => m.assignmentId === assignment.id);
+      if (existingMindMap) {
+        setConcepts(existingMindMap.concepts);
+        setCurrentMindMapIdState(existingMindMap.id);
+        setCurrentMindMapId(existingMindMap.id);
+      } else {
+        // Load from localStorage for current session
+        const savedConcepts = loadKnowledgeGraph();
+        if (savedConcepts.length > 0) {
+          setConcepts(savedConcepts);
+        }
+      }
+    } else {
+      // No assignment - just load from localStorage
+      const savedConcepts = loadKnowledgeGraph();
+      if (savedConcepts.length > 0) {
+        setConcepts(savedConcepts);
+      }
+      
+      // Still load available mindmaps (all of them)
+      const allMindMaps = getMindMaps();
+      setAvailableMindMaps(allMindMaps.map(m => ({ id: m.id, name: m.name })));
     }
   }, []);
 
-  // Save knowledge graph whenever it changes
+  // Auto-save concepts whenever they change
   useEffect(() => {
     if (concepts.length > 0) {
+      // Save to localStorage for current session
       saveKnowledgeGraph(concepts);
+      
+      // If we have a current mindmap ID, update it
+      if (currentMindMapId) {
+        updateMindMap(currentMindMapId, concepts);
+      } else if (assignment && currentFolderId && concepts.length >= 3) {
+        // Auto-create mindmap after user has interacted enough
+        const newMindMap = createMindMap(
+          assignment.title,
+          currentFolderId,
+          concepts,
+          assignment.id,
+          assignment.title
+        );
+        setCurrentMindMapIdState(newMindMap.id);
+        setCurrentMindMapId(newMindMap.id);
+        
+        // Reload available mindmaps
+        const folderMindMaps = getMindMapsByFolder(currentFolderId);
+        setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
+      }
     }
   }, [concepts]);
 
@@ -419,6 +505,64 @@ const Astar = () => {
         description: `Click again to ask ASTAR about "${concept.label}"`,
       });
     }
+  };
+
+  const handleMindMapChange = (mindMapId: string) => {
+    if (mindMapId === 'current') {
+      // Switch back to current session
+      setCurrentMindMapIdState(null);
+      setCurrentMindMapId(null);
+      const savedConcepts = loadKnowledgeGraph();
+      setConcepts(savedConcepts);
+      
+      toast({
+        title: "Switched to Current Session",
+        description: "Working with your active mind map",
+      });
+    } else {
+      // Load the selected mindmap
+      const mindMap = getMindMapById(mindMapId);
+      if (mindMap) {
+        setConcepts(mindMap.concepts);
+        setCurrentMindMapIdState(mindMap.id);
+        setCurrentMindMapId(mindMap.id);
+        
+        toast({
+          title: "Mind Map Switched",
+          description: `Now viewing "${mindMap.name}"`,
+        });
+      }
+    }
+  };
+
+  const handleCreateNewMindMap = () => {
+    if (!currentFolderId) {
+      toast({
+        title: "No Folder Selected",
+        description: "Cannot create mindmap without a folder. Start from an assignment or select a folder.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const newMindMap = createMindMap(
+      `New Mind Map ${new Date().toLocaleTimeString()}`,
+      currentFolderId,
+      []
+    );
+
+    setConcepts([]);
+    setCurrentMindMapIdState(newMindMap.id);
+    setCurrentMindMapId(newMindMap.id);
+
+    // Reload available mindmaps
+    const folderMindMaps = getMindMapsByFolder(currentFolderId);
+    setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
+
+    toast({
+      title: "New Mind Map Created",
+      description: `Created "${newMindMap.name}"`,
+    });
   };
 
   const handleGenerateDraft = async () => {
@@ -843,11 +987,15 @@ const Astar = () => {
         <div className="flex-1 flex overflow-hidden">
           {/* Knowledge Graph Panel (if enabled) */}
           {showKnowledgeGraph && (
-            <div className="w-[500px] border-r border-border">
+            <div className="w-80 border-r border-border">
               <KnowledgeGraph
                 concepts={concepts}
                 currentConcept={currentConcept}
                 onConceptClick={handleConceptClick}
+                availableMindMaps={availableMindMaps}
+                currentMindMapId={currentMindMapId || undefined}
+                onMindMapChange={handleMindMapChange}
+                onCreateNewMindMap={handleCreateNewMindMap}
               />
             </div>
           )}
