@@ -51,10 +51,7 @@ const Board = () => {
     <div className="min-h-screen">
       {/* Header */}
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center shadow-glow">
-            <Sparkles className="w-6 h-6 text-white" />
-          </div>
+        <div className="mb-2">
           <h1 className="text-3xl font-bold">Your Board</h1>
         </div>
         {!isLoading && !error && (
