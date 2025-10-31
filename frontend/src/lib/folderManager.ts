@@ -601,7 +601,7 @@ export const deleteCourseMaterial = (materialId: string): void => {
 // Utility function for random colors
 const getRandomColor = (): string => {
   const colors = [
-    '#10B981', // Emerald
+    '#2FED7B', // ASTAR Green
     '#A855F7', // Purple
     '#F59E0B', // Amber
     '#3B82F6', // Blue

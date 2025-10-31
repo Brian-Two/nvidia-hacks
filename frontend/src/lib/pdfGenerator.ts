@@ -26,7 +26,7 @@ export const generateStudyGuidePDF = (options: PDFOptions): void => {
   let yPosition = margin;
   
   // Header with ASTAR branding
-  doc.setFillColor(16, 185, 129); // Emerald green
+  doc.setFillColor(47, 237, 123); // ASTAR Green #2FED7B
   doc.rect(0, 0, pageWidth, 15, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(14);
