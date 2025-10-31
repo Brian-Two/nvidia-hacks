@@ -1,16 +1,43 @@
 import { ConceptNode } from '@/components/KnowledgeGraph';
 import { ProblemStep } from '@/components/StepSolver';
 
-export interface MindMap {
+export interface WorkSession {
   id: string;
-  name: string;
+  name: string; // Topic/Assignment/Exam Subject
   folderId: string;
+  
+  // Mind Map Data
   concepts: ConceptNode[];
+  
+  // Chat Data
+  conversationHistory: Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>;
+  
+  // Step Mode Data
+  stepMode: boolean;
+  problemSteps: ProblemStep[];
+  currentStepIndex: number;
+  
+  // Context & Notes
+  notes: string;
+  contextItems: Array<{
+    id: string;
+    type: 'pdf' | 'text' | 'link';
+    name: string;
+    content: string;
+    addedAt?: Date;
+  }>;
+  
+  // Metadata
   createdAt: Date;
   updatedAt: Date;
   assignmentId?: string;
   assignmentTitle?: string;
+  classSubject?: string; // e.g., "Computer Science", "Calculus"
+  sessionType?: 'assignment' | 'exam' | 'general-study' | 'exploration';
 }
+
+// Legacy type alias for backwards compatibility
+export type MindMap = WorkSession;
 
 export interface Document {
   id: string;
@@ -31,6 +58,7 @@ export interface CourseMaterial {
   content?: string;
   url?: string;
   folderId: string;
+  courseId?: string; // Canvas course ID to ensure proper filtering
   canvasId?: string;
   createdAt: Date;
   fileType?: string; // pdf, doc, etc.
@@ -43,14 +71,14 @@ export interface Folder {
   courseId?: string;
   courseName?: string;
   createdAt: Date;
-  mindMaps: string[]; // Array of mindmap IDs
+  sessions: string[]; // Array of session IDs (formerly mindMaps)
   documents: string[]; // Array of document IDs
   courseMaterials: string[]; // Array of course material IDs
 }
 
 const FOLDERS_KEY = 'astar_folders';
-const MINDMAPS_KEY = 'astar_mindmaps';
-const CURRENT_MINDMAP_KEY = 'astar_current_mindmap';
+const SESSIONS_KEY = 'astar_sessions'; // Renamed from mindmaps
+const CURRENT_SESSION_KEY = 'astar_current_session'; // Renamed from mindmap
 const DOCUMENTS_KEY = 'astar_documents';
 const COURSE_MATERIALS_KEY = 'astar_course_materials';
 
@@ -58,7 +86,35 @@ const COURSE_MATERIALS_KEY = 'astar_course_materials';
 export const getFolders = (): Folder[] => {
   try {
     const saved = localStorage.getItem(FOLDERS_KEY);
-    return saved ? JSON.parse(saved) : [];
+    const folders = saved ? JSON.parse(saved) : [];
+    
+    // Migrate old folders with mindMaps to sessions
+    const migratedFolders = folders.map((folder: any) => {
+      if (folder.mindMaps && !folder.sessions) {
+        return {
+          ...folder,
+          sessions: folder.mindMaps,
+          mindMaps: undefined
+        };
+      }
+      // Ensure sessions array exists
+      if (!folder.sessions) {
+        folder.sessions = [];
+      }
+      // Ensure other arrays exist
+      if (!folder.documents) folder.documents = [];
+      if (!folder.courseMaterials) folder.courseMaterials = [];
+      return folder;
+    });
+    
+    // Save migrated folders back
+    if (migratedFolders.some((f: any, i: number) => 
+      JSON.stringify(f) !== JSON.stringify(folders[i])
+    )) {
+      saveFolders(migratedFolders);
+    }
+    
+    return migratedFolders;
   } catch (error) {
     console.error('Failed to load folders:', error);
     return [];
@@ -74,19 +130,30 @@ export const saveFolders = (folders: Folder[]): void => {
 };
 
 export const createFolder = (name: string, courseId?: string, courseName?: string): Folder => {
+  // Generate truly unique ID using timestamp + random string
+  const uniqueId = `folder-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
   const newFolder: Folder = {
-    id: `folder-${Date.now()}`,
+    id: uniqueId,
     name,
     color: getRandomColor(),
     courseId,
     courseName,
     createdAt: new Date(),
-    mindMaps: [],
+    sessions: [], // Renamed from mindMaps
     documents: [],
     courseMaterials: [],
   };
 
   const folders = getFolders();
+  
+  // Double-check no folder with this ID already exists
+  const existingIndex = folders.findIndex(f => f.id === uniqueId);
+  if (existingIndex !== -1) {
+    console.error('Duplicate folder ID detected, regenerating...');
+    return createFolder(name, courseId, courseName);
+  }
+  
   folders.push(newFolder);
   saveFolders(folders);
 
@@ -97,10 +164,10 @@ export const deleteFolder = (folderId: string): void => {
   const folders = getFolders().filter(f => f.id !== folderId);
   saveFolders(folders);
 
-  // Also delete all mindmaps in this folder
-  const mindMaps = getMindMaps();
-  const updatedMindMaps = mindMaps.filter(m => m.folderId !== folderId);
-  saveMindMaps(updatedMindMaps);
+  // Also delete all sessions in this folder
+  const sessions = getSessions();
+  const updatedSessions = sessions.filter(s => s.folderId !== folderId);
+  saveSessions(updatedSessions);
 };
 
 export const renameFolder = (folderId: string, newName: string): void => {
@@ -116,120 +183,194 @@ export const getFolderById = (folderId: string): Folder | undefined => {
   return getFolders().find(f => f.id === folderId);
 };
 
-// MindMap Management
-export const getMindMaps = (): MindMap[] => {
+// Work Session Management
+export const getSessions = (): WorkSession[] => {
   try {
-    const saved = localStorage.getItem(MINDMAPS_KEY);
+    const saved = localStorage.getItem(SESSIONS_KEY);
     return saved ? JSON.parse(saved) : [];
   } catch (error) {
-    console.error('Failed to load mindmaps:', error);
+    console.error('Failed to load sessions:', error);
     return [];
   }
 };
 
-export const saveMindMaps = (mindMaps: MindMap[]): void => {
+export const saveSessions = (sessions: WorkSession[]): void => {
   try {
-    localStorage.setItem(MINDMAPS_KEY, JSON.stringify(mindMaps));
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
   } catch (error) {
-    console.error('Failed to save mindmaps:', error);
+    console.error('Failed to save sessions:', error);
   }
 };
 
+// Legacy support
+export const getMindMaps = getSessions;
+export const saveMindMaps = saveSessions;
+
+export const createSession = (
+  name: string,
+  folderId: string,
+  options: {
+    concepts?: ConceptNode[];
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>;
+    assignmentId?: string;
+    assignmentTitle?: string;
+    classSubject?: string;
+    sessionType?: WorkSession['sessionType'];
+  } = {}
+): WorkSession => {
+  const newSession: WorkSession = {
+    id: `session-${Date.now()}`,
+    name,
+    folderId,
+    concepts: options.concepts || [],
+    conversationHistory: options.conversationHistory || [],
+    stepMode: false,
+    problemSteps: [],
+    currentStepIndex: 0,
+    notes: '',
+    contextItems: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    assignmentId: options.assignmentId,
+    assignmentTitle: options.assignmentTitle,
+    classSubject: options.classSubject,
+    sessionType: options.sessionType || 'general-study',
+  };
+
+  const sessions = getSessions();
+  sessions.push(newSession);
+  saveSessions(sessions);
+
+  // Add to folder's session list
+  const folders = getFolders();
+  const folder = folders.find(f => f.id === folderId);
+  if (folder) {
+    folder.sessions.push(newSession.id);
+    saveFolders(folders);
+  }
+
+  return newSession;
+};
+
+// Legacy support
 export const createMindMap = (
   name: string,
   folderId: string,
   concepts: ConceptNode[] = [],
   assignmentId?: string,
-  assignmentTitle?: string
-): MindMap => {
-  const newMindMap: MindMap = {
-    id: `mindmap-${Date.now()}`,
-    name,
-    folderId,
+  assignmentTitle?: string,
+  topic?: string
+): WorkSession => {
+  return createSession(name, folderId, {
     concepts,
-    createdAt: new Date(),
-    updatedAt: new Date(),
     assignmentId,
     assignmentTitle,
-  };
-
-  const mindMaps = getMindMaps();
-  mindMaps.push(newMindMap);
-  saveMindMaps(mindMaps);
-
-  // Add to folder's mindmap list
-  const folders = getFolders();
-  const folder = folders.find(f => f.id === folderId);
-  if (folder) {
-    folder.mindMaps.push(newMindMap.id);
-    saveFolders(folders);
-  }
-
-  return newMindMap;
+  });
 };
 
-export const updateMindMap = (mindMapId: string, concepts: ConceptNode[]): void => {
-  const mindMaps = getMindMaps();
-  const mindMap = mindMaps.find(m => m.id === mindMapId);
-  if (mindMap) {
-    mindMap.concepts = concepts;
-    mindMap.updatedAt = new Date();
-    saveMindMaps(mindMaps);
+export const updateSession = (
+  sessionId: string,
+  updates: Partial<Omit<WorkSession, 'id' | 'createdAt' | 'folderId'>>
+): void => {
+  const sessions = getSessions();
+  const session = sessions.find(s => s.id === sessionId);
+  if (session) {
+    Object.assign(session, updates);
+    session.updatedAt = new Date();
+    saveSessions(sessions);
   }
 };
 
-export const deleteMindMap = (mindMapId: string): void => {
-  const mindMaps = getMindMaps().filter(m => m.id !== mindMapId);
-  saveMindMaps(mindMaps);
+// Legacy support
+export const updateMindMap = (
+  mindMapId: string, 
+  concepts: ConceptNode[], 
+  conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string; timestamp: Date }>,
+  notes?: string
+): void => {
+  updateSession(mindMapId, {
+    concepts,
+    conversationHistory,
+    notes,
+  });
+};
+
+export const deleteSession = (sessionId: string): void => {
+  const sessions = getSessions().filter(s => s.id !== sessionId);
+  saveSessions(sessions);
 
   // Remove from folder
   const folders = getFolders();
   folders.forEach(folder => {
-    folder.mindMaps = folder.mindMaps.filter(id => id !== mindMapId);
+    folder.sessions = folder.sessions.filter(id => id !== sessionId);
   });
   saveFolders(folders);
 };
 
-export const getMindMapById = (mindMapId: string): MindMap | undefined => {
-  return getMindMaps().find(m => m.id === mindMapId);
+export const getSessionById = (sessionId: string): WorkSession | undefined => {
+  return getSessions().find(s => s.id === sessionId);
 };
 
-export const getMindMapsByFolder = (folderId: string): MindMap[] => {
-  return getMindMaps().filter(m => m.folderId === folderId);
+export const getSessionsByFolder = (folderId: string): WorkSession[] => {
+  return getSessions().filter(s => s.folderId === folderId);
 };
 
-// Current MindMap (active in workbench)
-export const getCurrentMindMapId = (): string | null => {
-  return localStorage.getItem(CURRENT_MINDMAP_KEY);
+// Current Session (active in workbench)
+export const getCurrentSessionId = (): string | null => {
+  return localStorage.getItem(CURRENT_SESSION_KEY);
 };
 
-export const setCurrentMindMapId = (mindMapId: string | null): void => {
-  if (mindMapId) {
-    localStorage.setItem(CURRENT_MINDMAP_KEY, mindMapId);
+export const setCurrentSessionId = (sessionId: string | null): void => {
+  if (sessionId) {
+    localStorage.setItem(CURRENT_SESSION_KEY, sessionId);
   } else {
-    localStorage.removeItem(CURRENT_MINDMAP_KEY);
+    localStorage.removeItem(CURRENT_SESSION_KEY);
   }
 };
+
+// Legacy support
+export const deleteMindMap = deleteSession;
+export const getMindMapById = getSessionById;
+export const getMindMapsByFolder = getSessionsByFolder;
+export const getCurrentMindMapId = getCurrentSessionId;
+export const setCurrentMindMapId = setCurrentSessionId;
 
 // Auto-create folders from Canvas courses
 export const createFoldersFromCourses = (courses: Array<{ id: number; name: string; course_code?: string }>): void => {
   const existingFolders = getFolders();
-  const newFolders: Folder[] = [];
+  let newFoldersCreated = 0;
 
   courses.forEach(course => {
-    // Check if folder already exists for this course
-    const exists = existingFolders.some(f => f.courseId === course.id.toString());
+    // Skip if course doesn't have proper ID or name
+    if (!course.id || !course.name) {
+      console.warn('Skipping course with missing id or name:', course);
+      return;
+    }
+    
+    const courseIdStr = course.id.toString();
+    
+    // Check if folder already exists for this course ID
+    const exists = existingFolders.some(f => f.courseId === courseIdStr);
+    
     if (!exists) {
-      const folder = createFolder(
-        course.course_code || course.name,
-        course.id.toString(),
+      // Clean up course name (remove term prefix like "2025 Fall")
+      const courseName = course.name.replace(/^20\d{2} (Fall|Spring|Summer|Winter) /, '');
+      
+      console.log(`Creating folder for course ${courseIdStr}: ${courseName}`);
+      
+      createFolder(
+        courseName,
+        courseIdStr,
         course.name
       );
-      newFolders.push(folder);
+      
+      newFoldersCreated++;
+    } else {
+      console.log(`Folder already exists for course ${courseIdStr}`);
     }
   });
 
-  return;
+  console.log(`Created ${newFoldersCreated} new course folders`);
 };
 
 // Get or create folder for an assignment
@@ -341,10 +482,14 @@ export const createCourseMaterial = (
   content?: string,
   url?: string,
   canvasId?: string,
-  fileType?: string
+  fileType?: string,
+  courseId?: string
 ): CourseMaterial => {
+  // Generate unique ID with timestamp and random string
+  const uniqueId = `material-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  
   const newMaterial: CourseMaterial = {
-    id: `material-${Date.now()}`,
+    id: uniqueId,
     name,
     type,
     content,
@@ -353,16 +498,28 @@ export const createCourseMaterial = (
     canvasId,
     createdAt: new Date(),
     fileType,
+    courseId, // Add courseId to ensure proper filtering
   };
 
   const materials = getCourseMaterials();
+  
+  // Check if this material already exists (by canvasId and folderId)
+  const existingMaterial = materials.find(m => 
+    m.canvasId === canvasId && m.folderId === folderId && canvasId
+  );
+  
+  if (existingMaterial) {
+    console.log(`Material already exists: ${name} (canvasId: ${canvasId})`);
+    return existingMaterial;
+  }
+  
   materials.push(newMaterial);
   saveCourseMaterials(materials);
 
   // Add to folder's course materials list
   const folders = getFolders();
   const folder = folders.find(f => f.id === folderId);
-  if (folder) {
+  if (folder && !folder.courseMaterials.includes(newMaterial.id)) {
     folder.courseMaterials.push(newMaterial.id);
     saveFolders(folders);
   }

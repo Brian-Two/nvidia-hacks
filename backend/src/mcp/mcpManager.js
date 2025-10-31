@@ -1,6 +1,7 @@
 // MCP Server Manager - Handle multiple MCP server connections
 import 'dotenv/config';
 import { canvasClient } from '../canvasMCP.js';
+import { createGitHubClient } from './clients/githubMCP.js';
 
 // In-memory storage for MCP servers (replace with database in production)
 const mcpServers = new Map();
@@ -107,30 +108,47 @@ class MCPServer {
   }
 
   async testGitHubConnection() {
-    // GitHub API test
-    const response = await fetch('https://api.github.com/user', {
-      headers: {
-        'Authorization': `token ${this.apiKey}`,
-        'Accept': 'application/vnd.github.v3+json'
+    try {
+      const githubClient = createGitHubClient(this.apiKey);
+      const result = await githubClient.testConnection();
+      
+      if (!result.success) {
+        this.status = 'error';
+        return { 
+          success: false, 
+          error: result.error || 'Invalid GitHub token or insufficient permissions' 
+        };
       }
-    });
 
-    if (!response.ok) {
-      this.status = 'error';
+      this.status = 'connected';
+      this.lastSync = new Date().toISOString();
       return { 
-        success: false, 
-        error: 'Invalid GitHub token' 
+        success: true, 
+        message: 'GitHub connected successfully',
+        data: { 
+          username: result.user, 
+          name: result.name,
+          email: result.email 
+        }
+      };
+    } catch (error) {
+      this.status = 'error';
+      return {
+        success: false,
+        error: error.message
       };
     }
-
-    const data = await response.json();
-    this.status = 'connected';
-    this.lastSync = new Date().toISOString();
-    return { 
-      success: true, 
-      message: 'GitHub connected successfully',
-      data: { username: data.login }
-    };
+  }
+  
+  // Get GitHub client instance
+  getGitHubClient() {
+    if (this.type !== MCP_TYPES.GITHUB) {
+      throw new Error('Not a GitHub MCP server');
+    }
+    if (this.status !== 'connected') {
+      throw new Error('GitHub MCP not connected');
+    }
+    return createGitHubClient(this.apiKey);
   }
 
   async testNotionConnection() {
@@ -359,14 +377,141 @@ export class MCPManager {
     if (githubServers.length > 0) {
       tools.push(
         {
-          name: 'search_github_repos',
-          description: 'Search GitHub repositories',
-          mcpType: MCP_TYPES.GITHUB
+          name: 'github_create_repo',
+          description: 'Create a new GitHub repository with README, .gitignore, and license. Use this to set up new projects.',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Repository name (e.g., "learning-styles-ml")' },
+              description: { type: 'string', description: 'Repository description' },
+              private: { type: 'boolean', description: 'Make repository private (default: false)' },
+              autoInit: { type: 'boolean', description: 'Initialize with README (default: true)' },
+              gitignoreTemplate: { type: 'string', description: 'Language for .gitignore (e.g., "Python", "Node", "TeX")' },
+              licenseTemplate: { type: 'string', description: 'License type (e.g., "mit", "apache-2.0")' }
+            },
+            required: ['name']
+          }
         },
         {
-          name: 'get_github_file',
-          description: 'Get file contents from GitHub',
-          mcpType: MCP_TYPES.GITHUB
+          name: 'github_create_file',
+          description: 'Create a new file in a GitHub repository. Use this to add code, documentation, or configuration files.',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' },
+              path: { type: 'string', description: 'File path (e.g., "README.md", "src/main.py", "paper/main.tex")' },
+              content: { type: 'string', description: 'File content' },
+              message: { type: 'string', description: 'Commit message (e.g., "Add initial paper structure")' },
+              branch: { type: 'string', description: 'Branch name (optional, default: main)' }
+            },
+            required: ['owner', 'repo', 'path', 'content']
+          }
+        },
+        {
+          name: 'github_update_file',
+          description: 'Update an existing file in a GitHub repository',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' },
+              path: { type: 'string', description: 'File path' },
+              content: { type: 'string', description: 'New file content' },
+              message: { type: 'string', description: 'Commit message' },
+              sha: { type: 'string', description: 'Current file SHA (required for updates)' },
+              branch: { type: 'string', description: 'Branch name (optional)' }
+            },
+            required: ['owner', 'repo', 'path', 'content', 'sha']
+          }
+        },
+        {
+          name: 'github_get_file',
+          description: 'Get file contents from a GitHub repository',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' },
+              path: { type: 'string', description: 'File path' },
+              branch: { type: 'string', description: 'Branch name (optional)' }
+            },
+            required: ['owner', 'repo', 'path']
+          }
+        },
+        {
+          name: 'github_create_branch',
+          description: 'Create a new branch in a GitHub repository',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' },
+              branch: { type: 'string', description: 'New branch name' },
+              fromBranch: { type: 'string', description: 'Source branch (default: "main")' }
+            },
+            required: ['owner', 'repo', 'branch']
+          }
+        },
+        {
+          name: 'github_list_repos',
+          description: 'List user\'s GitHub repositories',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              sort: { type: 'string', description: 'Sort by: "created", "updated", "pushed", "full_name"' },
+              perPage: { type: 'number', description: 'Results per page (default: 30)' }
+            }
+          }
+        },
+        {
+          name: 'github_get_repo',
+          description: 'Get details about a specific GitHub repository',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' }
+            },
+            required: ['owner', 'repo']
+          }
+        },
+        {
+          name: 'github_create_issue',
+          description: 'Create an issue in a GitHub repository',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              owner: { type: 'string', description: 'Repository owner (username)' },
+              repo: { type: 'string', description: 'Repository name' },
+              title: { type: 'string', description: 'Issue title' },
+              body: { type: 'string', description: 'Issue description' },
+              labels: { type: 'array', items: { type: 'string' }, description: 'Issue labels' }
+            },
+            required: ['owner', 'repo', 'title']
+          }
+        },
+        {
+          name: 'search_github_repos',
+          description: 'Search GitHub repositories by keyword',
+          mcpType: MCP_TYPES.GITHUB,
+          input_schema: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'Search query' },
+              sort: { type: 'string', description: 'Sort by: "stars", "forks", "updated"' },
+              order: { type: 'string', description: 'Order: "asc" or "desc"' }
+            },
+            required: ['query']
+          }
         }
       );
     }

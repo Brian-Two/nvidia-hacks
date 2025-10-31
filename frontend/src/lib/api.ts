@@ -119,31 +119,6 @@ export const getAssignments = async (): Promise<Assignment[]> => {
 };
 
 /**
- * Get course materials for a specific course
- */
-export const getCourseMaterials = async (courseId: string): Promise<any> => {
-  const { canvasUrl, apiToken } = getCanvasCredentials();
-
-  if (!apiToken) {
-    throw new Error('No Canvas API token found');
-  }
-
-  const response = await fetch(`${API_URL}/api/course-materials`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ canvasUrl, apiToken, courseId }),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch course materials');
-  }
-
-  return response.json();
-};
-
-/**
  * Send a chat message to the AI
  */
 export const sendChatMessage = async (request: ChatRequest): Promise<ChatResponse> => {
@@ -395,5 +370,35 @@ export const getPageContent = async (courseId: string, pageUrl: string): Promise
   }
 
   return response.json();
+};
+
+/**
+ * Fetch all courses for the user
+ */
+export const getCourses = async (): Promise<any[]> => {
+  const { canvasUrl, apiToken } = getCanvasCredentials();
+
+  if (!apiToken) {
+    throw new Error('No Canvas API token found');
+  }
+
+  const response = await fetch(`${API_URL}/api/courses`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      canvasUrl,
+      apiToken,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to fetch courses');
+  }
+
+  const data = await response.json();
+  return data.courses || [];
 };
 

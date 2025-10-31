@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Sparkles, Menu, X, Download, Upload, FileText, Plus, Trash2, Link2, FileUp, Type, Brain, Zap } from "lucide-react";
+import { Send, Sparkles, Menu, X, Download, Upload, FileText, Plus, Trash2, Link2, FileUp, Type, Brain, Zap, FolderOpen, Book, Workflow as WorkflowIcon, ThumbsUp, ThumbsDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendChatMessage, submitAssignmentToCanvas } from "@/lib/api";
@@ -9,7 +9,9 @@ import ProgressTracker from "@/components/ProgressTracker";
 import { generateStudyGuidePDF, generateAssignmentDraftPDF } from "@/lib/pdfGenerator";
 import { formatLLMResponse } from "@/lib/messageFormatter";
 import FormattedMessage from "@/components/FormattedMessage";
+import { extractTextFromFile } from "@/lib/pdfExtractor";
 import KnowledgeGraph, { ConceptNode } from "@/components/KnowledgeGraph";
+import KnowledgeGraphFlow from "@/components/KnowledgeGraphFlow";
 import StepSolver, { ProblemStep } from "@/components/StepSolver";
 import { extractConcepts, addConceptsToGraph, saveKnowledgeGraph, loadKnowledgeGraph, updateConceptStatus, exportKnowledgeGraphAsImage } from "@/lib/conceptExtractor";
 import { 
@@ -20,7 +22,30 @@ import {
   getOrCreateFolderForAssignment,
   setCurrentMindMapId,
   getCurrentMindMapId,
-  getMindMapById 
+  getMindMapById,
+  getFolders,
+  getCourseMaterialsByFolder,
+  createFolder 
+} from "@/lib/folderManager";
+import { getOrCreateFolderForConversation } from "@/lib/topicDetector";
+import WorkflowSelector from "@/components/WorkflowSelector";
+import SessionSelector from "@/components/SessionSelector";
+import { 
+  Workflow,
+  initializeDefaultWorkflows,
+  isTaskOrAssignment,
+  detectRequiredServers,
+  suggestWorkflowForTask,
+  createWorkflow,
+  incrementWorkflowUsage,
+  getMCPServers,
+  getDisconnectedServers
+} from "@/lib/workflowManager";
+import {
+  WorkSession,
+  createSession,
+  updateSession,
+  getSessionById
 } from "@/lib/folderManager";
 
 interface Message {
@@ -74,9 +99,11 @@ const Astar = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const [showAddContext, setShowAddContext] = useState(false);
-  const [newContextType, setNewContextType] = useState<'pdf' | 'text' | 'link'>('text');
+  const [newContextType, setNewContextType] = useState<'pdf' | 'text' | 'link' | 'folder'>('text');
   const [newContextText, setNewContextText] = useState('');
   const [newContextUrl, setNewContextUrl] = useState('');
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [availableFolders, setAvailableFolders] = useState<Array<{ id: string; name: string }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -89,10 +116,15 @@ const Astar = () => {
   const [problemSteps, setProblemSteps] = useState<ProblemStep[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   
-  // Folder & MindMap state
-  const [currentMindMapId, setCurrentMindMapIdState] = useState<string | null>(null);
-  const [availableMindMaps, setAvailableMindMaps] = useState<Array<{ id: string; name: string }>>([]);
+  // Session state
+  const [currentSessionId, setCurrentSessionIdState] = useState<string | null>(null);
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+
+  // Workflow state
+  const [showWorkflowSelector, setShowWorkflowSelector] = useState(false);
+  const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
+  const [workflowActive, setWorkflowActive] = useState(false);
+  const [showWorkflowFeedback, setShowWorkflowFeedback] = useState(false);
 
   // Progress tracking
   const messageCount = Math.floor((messages.length - 1) / 2); // User messages only
@@ -108,25 +140,75 @@ const Astar = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Initialize folder and mindmap system
+  // Helper functions for session management
+  const loadSession = (sessionId: string) => {
+    const session = getSessionById(sessionId);
+    if (session) {
+      setConcepts(session.concepts);
+      setMessages(session.conversationHistory.map((msg, idx) => ({
+        id: `${idx}`,
+        role: msg.role,
+        content: msg.content,
+      })));
+      setNotes(session.notes);
+      // Add addedAt property if missing for backwards compatibility
+      setContextItems(session.contextItems.map(item => ({
+        ...item,
+        addedAt: item.addedAt || new Date()
+      })) as ContextItem[]);
+      setStepMode(session.stepMode);
+      setProblemSteps(session.problemSteps);
+      setCurrentStepIndex(session.currentStepIndex);
+      setCurrentSessionIdState(session.id);
+      setCurrentFolderId(session.folderId);
+      setCurrentMindMapId(session.id);
+      
+      toast({
+        title: "Session Loaded",
+        description: `Loaded "${session.name}"`,
+      });
+    }
+  };
+
+  const startNewSession = () => {
+    setConcepts([]);
+    setMessages([{
+      id: "1",
+      role: "assistant",
+      content: assignment 
+        ? `Hi! I'm ASTAR. I see you're working on "${assignment.title}" for ${assignment.course}. I'm here to help you think through this assignment at a fundamental level. What aspect would you like to explore first?`
+        : "Hi! I'm ASTAR. I'm here to help you think through complex problems at a fundamental level. What would you like to understand today?",
+    }]);
+    setNotes("");
+    setContextItems([]);
+    setStepMode(false);
+    setProblemSteps([]);
+    setCurrentStepIndex(0);
+    setCurrentSessionIdState(null);
+    setCurrentMindMapId(null);
+    saveKnowledgeGraph([]);
+  };
+
+  // Initialize workflows on mount
   useEffect(() => {
-    // Check if coming from Folders page with a specific mindmap
-    const mindMapIdFromState = (location.state as { mindMapId?: string })?.mindMapId;
+    initializeDefaultWorkflows();
+  }, []);
+
+  // Load available folders on mount
+  useEffect(() => {
+    const folders = getFolders();
+    setAvailableFolders(folders.map(f => ({ id: f.id, name: f.name })));
+  }, []);
+
+  // Initialize session system
+  useEffect(() => {
+    // Check if coming from Folders page with a specific session
+    const sessionIdFromState = (location.state as { sessionId?: string; mindMapId?: string })?.sessionId 
+      || (location.state as { mindMapId?: string })?.mindMapId;
     
-    if (mindMapIdFromState) {
-      // Load the specific mindmap
-      const mindMap = getMindMapById(mindMapIdFromState);
-      if (mindMap) {
-        setConcepts(mindMap.concepts);
-        setCurrentMindMapIdState(mindMap.id);
-        setCurrentFolderId(mindMap.folderId);
-        setCurrentMindMapId(mindMap.id);
-        
-        toast({
-          title: "Mind Map Loaded",
-          description: `Loaded "${mindMap.name}"`,
-        });
-      }
+    if (sessionIdFromState) {
+      // Load the specific session
+      loadSession(sessionIdFromState);
     } else if (assignment) {
       // Auto-create or get folder for this assignment
       const folder = getOrCreateFolderForAssignment(
@@ -135,63 +217,111 @@ const Astar = () => {
       );
       setCurrentFolderId(folder.id);
       
-      // Load available mindmaps from this folder
-      const folderMindMaps = getMindMapsByFolder(folder.id);
-      setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
+      // Check if there's already a session for this assignment
+      const folderSessions = getMindMapsByFolder(folder.id);
+      const existingSession = folderSessions.find(s => s.assignmentId === assignment.id);
       
-      // Check if there's already a mindmap for this assignment
-      const existingMindMap = folderMindMaps.find(m => m.assignmentId === assignment.id);
-      if (existingMindMap) {
-        setConcepts(existingMindMap.concepts);
-        setCurrentMindMapIdState(existingMindMap.id);
-        setCurrentMindMapId(existingMindMap.id);
-      } else {
-        // Load from localStorage for current session
-        const savedConcepts = loadKnowledgeGraph();
-        if (savedConcepts.length > 0) {
-          setConcepts(savedConcepts);
-        }
+      if (existingSession) {
+        loadSession(existingSession.id);
       }
     } else {
-      // No assignment - just load from localStorage
-      const savedConcepts = loadKnowledgeGraph();
-      if (savedConcepts.length > 0) {
-        setConcepts(savedConcepts);
-      }
-      
-      // Still load available mindmaps (all of them)
-      const allMindMaps = getMindMaps();
-      setAvailableMindMaps(allMindMaps.map(m => ({ id: m.id, name: m.name })));
+      // No assignment - Start fresh in workbench
+      startNewSession();
     }
   }, []);
 
-  // Auto-save concepts whenever they change
+  // Auto-save complete session whenever key data changes
   useEffect(() => {
-    if (concepts.length > 0) {
+    const saveCurrentSession = async () => {
+      if (messages.length <= 1) return; // Don't save if only greeting message
+
       // Save to localStorage for current session
       saveKnowledgeGraph(concepts);
       
-      // If we have a current mindmap ID, update it
-      if (currentMindMapId) {
-        updateMindMap(currentMindMapId, concepts);
-      } else if (assignment && currentFolderId && concepts.length >= 3) {
-        // Auto-create mindmap after user has interacted enough
-        const newMindMap = createMindMap(
-          assignment.title,
-          currentFolderId,
+      // Prepare conversation history with timestamps
+      const conversationWithTimestamps = messages.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: new Date()
+      }));
+      
+      // If we have a current session ID, update it
+      if (currentSessionId) {
+        updateSession(currentSessionId, {
           concepts,
-          assignment.id,
-          assignment.title
-        );
-        setCurrentMindMapIdState(newMindMap.id);
-        setCurrentMindMapId(newMindMap.id);
+          conversationHistory: conversationWithTimestamps,
+          notes,
+          contextItems,
+          stepMode,
+          problemSteps,
+          currentStepIndex,
+        });
+      } else if (currentFolderId && messages.length >= 3) {
+        // Auto-create session after user has interacted enough
+        // Detect session name from conversation
+        const sessionName = assignment?.title || messages[1]?.content.substring(0, 50) || "New Study Session";
         
-        // Reload available mindmaps
-        const folderMindMaps = getMindMapsByFolder(currentFolderId);
-        setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
+        const newSession = createSession(sessionName, currentFolderId, {
+          concepts,
+          conversationHistory: conversationWithTimestamps,
+          assignmentId: assignment?.id,
+          assignmentTitle: assignment?.title,
+          sessionType: assignment ? 'assignment' : 'general-study',
+        });
+        
+        setCurrentSessionIdState(newSession.id);
+        setCurrentMindMapId(newSession.id);
+        
+        toast({
+          title: "Session Saved",
+          description: `Created "${newSession.name}"`,
+        });
+      }
+    };
+
+    saveCurrentSession();
+  }, [concepts, messages, notes, contextItems, stepMode, problemSteps, currentStepIndex]);
+
+  const handleSelectWorkflow = (workflow: Workflow) => {
+    setCurrentWorkflow(workflow);
+    setWorkflowActive(true);
+    incrementWorkflowUsage(workflow.id);
+    
+    toast({
+      title: "Workflow Activated",
+      description: `Using "${workflow.name}" workflow`,
+    });
+
+    // Auto-enable step mode for workflows
+    setStepMode(true);
+  };
+
+  const handleWorkflowFeedback = (rating: 'up' | 'down') => {
+    if (currentWorkflow) {
+      const { rateWorkflow } = require('@/lib/workflowManager');
+      rateWorkflow(currentWorkflow.id, rating);
+      
+      toast({
+        title: rating === 'up' ? 'Thanks for the feedback!' : 'We\'ll improve this',
+        description: rating === 'up' 
+          ? 'This workflow will be prioritized in suggestions'
+          : 'Help us understand what didn\'t work',
+      });
+
+      // If rated positively and workflow was ad-hoc, offer to save
+      if (rating === 'up' && !currentWorkflow.id.startsWith('workflow-canvas')) {
+        // This was a suggested/new workflow - already saved
+        toast({
+          title: "Workflow Saved!",
+          description: "This workflow will be available for future use",
+        });
       }
     }
-  }, [concepts]);
+    
+    setShowWorkflowFeedback(false);
+    setWorkflowActive(false);
+    setCurrentWorkflow(null);
+  };
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -203,8 +333,50 @@ const Astar = () => {
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    const currentInput = input;
     setInput("");
     setIsTyping(true);
+
+    // Detect if this is a task/assignment
+    const isTask = isTaskOrAssignment(currentInput);
+    
+    // Detect required MCP servers
+    const requiredServers = detectRequiredServers(
+      currentInput, 
+      assignment?.description
+    );
+    
+    // Check for disconnected servers
+    const disconnected = getDisconnectedServers().filter(s => 
+      requiredServers.includes(s.id)
+    );
+
+    // Suggest workflow if task detected and no current workflow
+    if (isTask && !workflowActive && messages.length < 3) {
+      const suggestedWorkflow = suggestWorkflowForTask(currentInput, assignment?.description);
+      if (suggestedWorkflow) {
+        toast({
+          title: "Workflow Suggested",
+          description: `Try "${suggestedWorkflow.name}" for this task`,
+          action: {
+            label: "Use Workflow",
+            onClick: () => handleSelectWorkflow(suggestedWorkflow)
+          },
+        } as any);
+      }
+    }
+
+    // Notify about disconnected servers
+    if (disconnected.length > 0 && isTask) {
+      toast({
+        title: "MCP Servers Needed",
+        description: `Connect ${disconnected.map(s => s.name).join(', ')} to enable full functionality`,
+        action: {
+          label: "Connect",
+          onClick: () => setShowWorkflowSelector(true)
+        },
+      } as any);
+    }
 
     try {
       // Build additional context from context items
@@ -221,9 +393,34 @@ const Astar = () => {
         }).join('\n\n');
       }
 
+      // Build enhanced context with workflow and task detection
+      let enhancedMessage = currentInput + additionalContext;
+      
+      // Add workflow context if active
+      if (workflowActive && currentWorkflow) {
+        enhancedMessage += `\n\n[SYSTEM: User is using the "${currentWorkflow.name}" workflow. Steps: ${currentWorkflow.steps.map(s => s.serverName).join(' → ')}. Focus on step-by-step guidance and resource identification.]`;
+      }
+      
+      // Add task detection context
+      if (isTask) {
+        enhancedMessage += `\n\n[SYSTEM: This appears to be a task/assignment request. Use Step Mode to break down the process. Identify required resources and platforms (GitHub, Notion, etc.) that might help complete this task.]`;
+      }
+      
+      // Add required servers context
+      if (requiredServers.length > 0) {
+        const connectedList = requiredServers.filter(id => 
+          getMCPServers().find(s => s.id === id)?.connected
+        );
+        const disconnectedList = disconnected.map(s => s.name);
+        
+        if (disconnectedList.length > 0) {
+          enhancedMessage += `\n\n[SYSTEM: Required platforms detected but not connected: ${disconnectedList.join(', ')}. Suggest connecting these to help with the task.]`;
+        }
+      }
+
       // Call real LLM backend with optional assignment context and additional context
       const response = await sendChatMessage({
-        message: input + additionalContext,
+        message: enhancedMessage,
         conversationHistory: messages.map(m => ({
           role: m.role,
           content: m.content
@@ -250,6 +447,60 @@ const Astar = () => {
       };
       
       setMessages((prev) => [...prev, aiMessage]);
+
+      // Check if we should offer workflow feedback after significant progress
+      if (workflowActive && !showWorkflowFeedback && messages.length >= 8) {
+        setShowWorkflowFeedback(true);
+      }
+
+      // Auto-detect folder after a few messages (only if no folder/assignment assigned)
+      if (!currentFolderId && !assignment && messages.length >= 4) {
+        const allMessages = [...messages, userMessage, aiMessage];
+        try {
+          const folderResult = await getOrCreateFolderForConversation(
+            allMessages.map(m => ({ role: m.role, content: m.content })),
+            getFolders(),
+            createFolder
+          );
+
+          if (folderResult) {
+            setCurrentFolderId(folderResult.id);
+            
+            // Create a session name from the detected folder/topic
+            const sessionName = allMessages[1]?.content.substring(0, 50) || folderResult.name;
+            
+            // Create new session in the detected folder
+            const newSession = createSession(sessionName, folderResult.id, {
+              concepts,
+              conversationHistory: allMessages.map(m => ({
+                role: m.role,
+                content: m.content,
+                timestamp: new Date()
+              })),
+              sessionType: 'exploration',
+              classSubject: folderResult.name,
+            });
+            
+            setCurrentSessionIdState(newSession.id);
+            setCurrentMindMapId(newSession.id);
+            
+            if (folderResult.isNew) {
+              toast({
+                title: "Folder & Session Created",
+                description: `Organized into "${folderResult.name}"`,
+              });
+            } else {
+              toast({
+                title: "Session Saved",
+                description: `Added to "${folderResult.name}"`,
+              });
+            }
+          }
+        } catch (topicError) {
+          console.error('Error detecting topic:', topicError);
+          // Silent fail - not critical
+        }
+      }
     } catch (error) {
       console.error('Chat error:', error);
       
@@ -338,7 +589,11 @@ const Astar = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.type !== 'application/pdf' && !file.type.includes('text')) {
+    // Check file type
+    const isPDF = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    const isText = file.type.includes('text') || file.name.endsWith('.txt') || file.name.endsWith('.md');
+    
+    if (!isPDF && !isText) {
       toast({
         title: "Invalid File Type",
         description: "Please upload a PDF or text file",
@@ -348,7 +603,16 @@ const Astar = () => {
     }
 
     try {
-      const text = await file.text();
+      // Show loading toast for PDFs (they take longer)
+      if (isPDF) {
+        toast({
+          title: "Processing PDF",
+          description: "Extracting text from PDF...",
+        });
+      }
+
+      // Extract text using the proper extractor
+      const text = await extractTextFromFile(file);
       
       const newItem: ContextItem = {
         id: Date.now().toString(),
@@ -363,12 +627,12 @@ const Astar = () => {
       
       toast({
         title: "File Uploaded",
-        description: `${file.name} has been added to context`,
+        description: `${file.name} has been added to context (${Math.round(text.length / 1000)}KB)`,
       });
     } catch (error) {
       toast({
         title: "Upload Failed",
-        description: "Could not read file",
+        description: error instanceof Error ? error.message : "Could not read file",
         variant: "destructive",
       });
     }
@@ -384,6 +648,48 @@ const Astar = () => {
     toast({
       title: "Context Removed",
       description: "Item removed from context",
+    });
+  };
+
+  const handleAddFolderMaterials = () => {
+    if (!selectedFolderId) {
+      toast({
+        title: "No Folder Selected",
+        description: "Please select a folder",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Get course materials from the selected folder
+    const materials = getCourseMaterialsByFolder(selectedFolderId);
+    const folder = getFolders().find(f => f.id === selectedFolderId);
+
+    if (materials.length === 0) {
+      toast({
+        title: "No Materials",
+        description: "This folder doesn't have any course materials",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Add each material as a context item
+    const newItems: ContextItem[] = materials.map(material => ({
+      id: `material-${material.id}`,
+      type: 'text',
+      name: `${folder?.name || 'Folder'} - ${material.name}`,
+      content: material.content || '',
+      addedAt: new Date(),
+    }));
+
+    setContextItems([...contextItems, ...newItems]);
+    setSelectedFolderId(null);
+    setShowAddContext(false);
+    
+    toast({
+      title: "Materials Added",
+      description: `Added ${newItems.length} material(s) to context`,
     });
   };
 
@@ -507,63 +813,6 @@ const Astar = () => {
     }
   };
 
-  const handleMindMapChange = (mindMapId: string) => {
-    if (mindMapId === 'current') {
-      // Switch back to current session
-      setCurrentMindMapIdState(null);
-      setCurrentMindMapId(null);
-      const savedConcepts = loadKnowledgeGraph();
-      setConcepts(savedConcepts);
-      
-      toast({
-        title: "Switched to Current Session",
-        description: "Working with your active mind map",
-      });
-    } else {
-      // Load the selected mindmap
-      const mindMap = getMindMapById(mindMapId);
-      if (mindMap) {
-        setConcepts(mindMap.concepts);
-        setCurrentMindMapIdState(mindMap.id);
-        setCurrentMindMapId(mindMap.id);
-        
-        toast({
-          title: "Mind Map Switched",
-          description: `Now viewing "${mindMap.name}"`,
-        });
-      }
-    }
-  };
-
-  const handleCreateNewMindMap = () => {
-    if (!currentFolderId) {
-      toast({
-        title: "No Folder Selected",
-        description: "Cannot create mindmap without a folder. Start from an assignment or select a folder.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const newMindMap = createMindMap(
-      `New Mind Map ${new Date().toLocaleTimeString()}`,
-      currentFolderId,
-      []
-    );
-
-    setConcepts([]);
-    setCurrentMindMapIdState(newMindMap.id);
-    setCurrentMindMapId(newMindMap.id);
-
-    // Reload available mindmaps
-    const folderMindMaps = getMindMapsByFolder(currentFolderId);
-    setAvailableMindMaps(folderMindMaps.map(m => ({ id: m.id, name: m.name })));
-
-    toast({
-      title: "New Mind Map Created",
-      description: `Created "${newMindMap.name}"`,
-    });
-  };
 
   const handleGenerateDraft = async () => {
     if (!assignment) return;
@@ -590,6 +839,11 @@ const Astar = () => {
       };
       
       setMessages((prev) => [...prev, draftMessage]);
+      
+      // Offer workflow feedback if active
+      if (workflowActive && currentWorkflow) {
+        setShowWorkflowFeedback(true);
+      }
       
       toast({
         title: "Draft Generated!",
@@ -736,7 +990,7 @@ const Astar = () => {
         {assignment ? (
           // Show assignment context if assignment exists
           <>
-            <div className="p-4 border-b border-border">
+            <div className="p-4 border-b border-border max-h-[400px] overflow-y-auto">
               <h2 className="font-semibold text-lg mb-2">Assignment Context</h2>
               <div className="space-y-3">
                 <div>
@@ -805,7 +1059,7 @@ const Astar = () => {
           {/* Add Context Form */}
           {showAddContext && (
             <div className="mb-3 p-3 bg-background/50 rounded-lg border border-border space-y-3">
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Button
                   size="sm"
                   variant={newContextType === 'text' ? 'default' : 'outline'}
@@ -835,6 +1089,15 @@ const Astar = () => {
                 >
                   <FileUp className="w-3 h-3 mr-1" />
                   File
+                </Button>
+                <Button
+                  size="sm"
+                  variant={newContextType === 'folder' ? 'default' : 'outline'}
+                  onClick={() => setNewContextType('folder')}
+                  className="flex-1"
+                >
+                  <FolderOpen className="w-3 h-3 mr-1" />
+                  Folder
                 </Button>
               </div>
 
@@ -871,6 +1134,31 @@ const Astar = () => {
                     className="w-full"
                   >
                     Add Link
+                  </Button>
+                </div>
+              )}
+
+              {newContextType === 'folder' && (
+                <div className="space-y-2">
+                  <select
+                    value={selectedFolderId || ''}
+                    onChange={(e) => setSelectedFolderId(e.target.value)}
+                    className="w-full px-3 py-2 text-xs bg-background border border-border rounded-md focus:border-primary"
+                  >
+                    <option value="">Select a folder...</option>
+                    {availableFolders.map(folder => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    size="sm"
+                    onClick={handleAddFolderMaterials}
+                    className="w-full"
+                  >
+                    <Book className="w-3 h-3 mr-2" />
+                    Add Folder Materials
                   </Button>
                 </div>
               )}
@@ -961,6 +1249,13 @@ const Astar = () => {
 
           {/* Mode Toggle Buttons */}
           <div className="ml-auto flex items-center gap-2">
+            {/* Session Selector */}
+            <SessionSelector
+              currentSessionId={currentSessionId}
+              currentFolderId={currentFolderId}
+              onSelectSession={(session) => loadSession(session.id)}
+              onNewSession={startNewSession}
+            />
             <Button
               variant={showKnowledgeGraph ? "default" : "outline"}
               size="sm"
@@ -983,25 +1278,21 @@ const Astar = () => {
           </div>
         </div>
 
-        {/* Main Content Area with optional Knowledge Graph */}
+        {/* Main Content Area with Knowledge Graph and Chat Side by Side */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Knowledge Graph Panel (if enabled) */}
+          {/* Knowledge Graph Panel (Main Focus - Left/Center) */}
           {showKnowledgeGraph && (
-            <div className="w-80 border-r border-border">
-              <KnowledgeGraph
+            <div className="flex-1 border-r border-border">
+              <KnowledgeGraphFlow
                 concepts={concepts}
                 currentConcept={currentConcept}
                 onConceptClick={handleConceptClick}
-                availableMindMaps={availableMindMaps}
-                currentMindMapId={currentMindMapId || undefined}
-                onMindMapChange={handleMindMapChange}
-                onCreateNewMindMap={handleCreateNewMindMap}
               />
             </div>
           )}
 
-          {/* Main Content: Step Solver or Chat Messages */}
-          <div className="flex-1 flex flex-col">
+          {/* Chat Panel (Right Side) */}
+          <div className={`flex flex-col ${showKnowledgeGraph ? 'w-[450px]' : 'flex-1'}`}>
             {stepMode && problemSteps.length > 0 ? (
               /* Step-by-Step Problem Solver */
               <StepSolver
@@ -1109,7 +1400,88 @@ const Astar = () => {
 
         {/* Input */}
         <div className="border-t border-border bg-card/50 backdrop-blur-sm p-4">
-          <div className="max-w-3xl mx-auto flex gap-3">
+          <div className="max-w-3xl mx-auto space-y-3">
+            {/* Workflow Status Bar */}
+            {workflowActive && currentWorkflow && (
+              <div className="flex items-center justify-between p-3 bg-primary/10 border border-primary/30 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <WorkflowIcon className="w-4 h-4 text-primary" />
+                  <span className="text-sm font-medium">
+                    Using: {currentWorkflow.name}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowWorkflowFeedback(true)}
+                    className="h-7 px-2 text-xs"
+                  >
+                    Rate Workflow
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setWorkflowActive(false);
+                      setCurrentWorkflow(null);
+                      toast({ title: "Workflow Deactivated" });
+                    }}
+                    className="h-7 w-7 p-0"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Workflow Feedback */}
+            {showWorkflowFeedback && (
+              <div className="flex items-center justify-between p-3 bg-background border border-border rounded-lg">
+                <span className="text-sm">Was this workflow helpful?</span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleWorkflowFeedback('up')}
+                    className="h-8 gap-2"
+                  >
+                    <ThumbsUp className="w-4 h-4" />
+                    Yes
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleWorkflowFeedback('down')}
+                    className="h-8 gap-2"
+                  >
+                    <ThumbsDown className="w-4 h-4" />
+                    No
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowWorkflowFeedback(false)}
+                    className="h-8 w-8 p-0"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              {/* Workflow Button */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowWorkflowSelector(true)}
+                className="self-end"
+                title="Select Workflow"
+              >
+                <WorkflowIcon className="w-5 h-5" />
+              </Button>
+
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -1126,10 +1498,18 @@ const Astar = () => {
             >
               <Send className="w-5 h-5" />
             </Button>
+            </div>
           </div>
         </div>
       </main>
       </div>
+
+      {/* Workflow Selector Dialog */}
+      <WorkflowSelector
+        isOpen={showWorkflowSelector}
+        onClose={() => setShowWorkflowSelector(false)}
+        onSelectWorkflow={handleSelectWorkflow}
+      />
     </div>
   );
 };

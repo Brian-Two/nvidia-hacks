@@ -258,6 +258,138 @@ app.get('/api/mcp/tools', async (req, res) => {
   }
 });
 
+// Execute GitHub MCP tool
+app.post('/api/mcp/github/execute', async (req, res) => {
+  try {
+    const { toolName, parameters } = req.body;
+    
+    console.log(`🔧 Executing GitHub tool: ${toolName}`);
+    console.log('   Parameters:', JSON.stringify(parameters, null, 2));
+    
+    // Get GitHub server
+    const githubServers = mcpManager.getServersByType(MCP_TYPES.GITHUB)
+      .filter(s => s.status === 'connected');
+    
+    if (githubServers.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No GitHub MCP server connected'
+      });
+    }
+    
+    const githubServer = githubServers[0];
+    const githubClient = githubServer.getGitHubClient();
+    
+    let result;
+    
+    // Execute the appropriate tool
+    switch (toolName) {
+      case 'github_create_repo':
+        result = await githubClient.createRepository({
+          name: parameters.name,
+          description: parameters.description,
+          private: parameters.private,
+          autoInit: parameters.autoInit,
+          gitignoreTemplate: parameters.gitignoreTemplate,
+          licenseTemplate: parameters.licenseTemplate
+        });
+        break;
+        
+      case 'github_create_file':
+        result = await githubClient.createFile(
+          parameters.owner,
+          parameters.repo,
+          parameters.path,
+          parameters.content,
+          parameters.message,
+          parameters.branch
+        );
+        break;
+        
+      case 'github_update_file':
+        result = await githubClient.updateFile(
+          parameters.owner,
+          parameters.repo,
+          parameters.path,
+          parameters.content,
+          parameters.message,
+          parameters.sha,
+          parameters.branch
+        );
+        break;
+        
+      case 'github_get_file':
+        result = await githubClient.getFileContent(
+          parameters.owner,
+          parameters.repo,
+          parameters.path,
+          parameters.branch
+        );
+        break;
+        
+      case 'github_create_branch':
+        result = await githubClient.createBranch(
+          parameters.owner,
+          parameters.repo,
+          parameters.branch,
+          parameters.fromBranch
+        );
+        break;
+        
+      case 'github_list_repos':
+        result = await githubClient.listRepositories({
+          sort: parameters.sort,
+          perPage: parameters.perPage
+        });
+        break;
+        
+      case 'github_get_repo':
+        result = await githubClient.getRepository(
+          parameters.owner,
+          parameters.repo
+        );
+        break;
+        
+      case 'github_create_issue':
+        result = await githubClient.createIssue(
+          parameters.owner,
+          parameters.repo,
+          parameters.title,
+          parameters.body,
+          parameters.labels
+        );
+        break;
+        
+      case 'search_github_repos':
+        result = await githubClient.searchRepositories(
+          parameters.query,
+          {
+            sort: parameters.sort,
+            order: parameters.order,
+            perPage: parameters.perPage
+          }
+        );
+        break;
+        
+      default:
+        return res.status(400).json({
+          success: false,
+          error: `Unknown GitHub tool: ${toolName}`
+        });
+    }
+    
+    console.log('✅ GitHub tool result:', result.success ? 'Success' : 'Failed');
+    
+    res.json(result);
+  } catch (error) {
+    console.error('Execute GitHub tool error:', error);
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
+  }
+});
+
 // Assignment Endpoints
 app.post('/api/assignments', async (req, res) => {
   try {
@@ -336,6 +468,99 @@ app.get('/api/assignments/:assignmentId', async (req, res) => {
     });
   } catch (error) {
     console.error('Get assignment error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all courses
+app.post('/api/courses', async (req, res) => {
+  try {
+    const { canvasUrl, apiToken } = req.body;
+    
+    console.log('📚 Fetching courses...');
+    console.log('  Canvas URL:', canvasUrl);
+    console.log('  Has Token:', !!apiToken);
+    
+    if (!apiToken) {
+      return res.status(400).json({ 
+        error: 'Canvas API token is required' 
+      });
+    }
+
+    // Set credentials on the shared client
+    const originalToken = canvasClient.token;
+    const originalBaseUrl = canvasClient.baseUrl;
+    
+    try {
+      canvasClient.token = apiToken;
+      if (canvasUrl) {
+        canvasClient.baseUrl = canvasUrl.endsWith('/api/v1') 
+          ? canvasUrl 
+          : `${canvasUrl}/api/v1`;
+      }
+
+      console.log('  Using Base URL:', canvasClient.baseUrl);
+
+      const courses = await canvasClient.getCourses();
+      
+      if (courses.error) {
+        console.error('❌ Canvas API Error:', courses.error);
+        return res.status(500).json({ error: courses.error });
+      }
+
+      console.log('✅ Found', courses.length, 'courses');
+
+      res.json({
+        success: true,
+        count: courses.length,
+        courses
+      });
+    } finally {
+      // Restore original credentials
+      canvasClient.token = originalToken;
+      canvasClient.baseUrl = originalBaseUrl;
+    }
+  } catch (error) {
+    console.error('❌ Get courses error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Proxy Canvas file downloads (CORS workaround)
+app.post('/api/download-file', async (req, res) => {
+  try {
+    const { fileUrl, canvasUrl, apiToken } = req.body;
+    
+    console.log('📥 Downloading file:', fileUrl);
+    
+    if (!apiToken || !fileUrl) {
+      return res.status(400).json({ 
+        error: 'Canvas API token and file URL are required' 
+      });
+    }
+
+    // Fetch the file from Canvas with authorization
+    const response = await fetch(fileUrl, {
+      headers: {
+        'Authorization': `Bearer ${apiToken}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Canvas returned ${response.status}: ${response.statusText}`);
+    }
+
+    // Get the file as a buffer
+    const buffer = await response.arrayBuffer();
+    const contentType = response.headers.get('content-type') || 'application/octet-stream';
+    
+    console.log(`✅ Downloaded ${buffer.byteLength} bytes (${contentType})`);
+
+    // Send the file back to the frontend
+    res.set('Content-Type', contentType);
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    console.error('❌ Download file error:', error);
     res.status(500).json({ error: error.message });
   }
 });

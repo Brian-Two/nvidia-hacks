@@ -164,7 +164,7 @@ const Connections = () => {
     localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
   };
 
-  const handleTestMcpConnection = (id: string) => {
+  const handleTestMcpConnection = async (id: string) => {
     const server = mcpServers.find(s => s.id === id);
     if (!server?.type || !server?.apiKey) {
       toast({
@@ -175,18 +175,50 @@ const Connections = () => {
       return;
     }
 
-    setTimeout(() => {
-      const updatedServers = mcpServers.map(s => 
-        s.id === id ? { ...s, isConnected: true } : s
-      );
-      setMcpServers(updatedServers);
-      // Save to localStorage
-      localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
-      toast({
-        title: "Connection Successful",
-        description: `${server.type} is now connected`,
+    try {
+      // Call backend API to add/test MCP server
+      const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_URL}/api/mcp/servers`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: server.type,
+          name: server.name || `${server.type} Connection`,
+          apiKey: server.apiKey,
+        }),
       });
-    }, 1000);
+
+      const result = await response.json();
+
+      if (result.success) {
+        const updatedServers = mcpServers.map(s => 
+          s.id === id ? { ...s, isConnected: true } : s
+        );
+        setMcpServers(updatedServers);
+        // Save to localStorage
+        localStorage.setItem("astar_mcp_servers", JSON.stringify(updatedServers));
+        
+        toast({
+          title: "Connection Successful",
+          description: `${server.type} is now connected to ASTAR backend`,
+        });
+      } else {
+        toast({
+          title: "Connection Failed",
+          description: result.error || "Could not connect to MCP server",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('MCP connection error:', error);
+      toast({
+        title: "Connection Error",
+        description: error instanceof Error ? error.message : "Could not connect to backend",
+        variant: "destructive",
+      });
+    }
   };
 
   const toggleShowToken = (id: string) => {
