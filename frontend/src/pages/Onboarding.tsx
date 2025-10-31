@@ -57,9 +57,11 @@ const Onboarding = () => {
         <div className="bg-card/80 backdrop-blur-xl border border-border rounded-2xl p-8 shadow-2xl">
           {/* Logo */}
           <div className="flex justify-center mb-6">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-primary flex items-center justify-center shadow-glow">
-              <Sparkles className="w-10 h-10 text-white" />
-            </div>
+            <img 
+              src="/apple-touch-icon.png" 
+              alt="ASTAR Logo" 
+              className="w-20 h-20"
+            />
           </div>
 
           {/* Title */}
