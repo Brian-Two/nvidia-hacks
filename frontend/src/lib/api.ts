@@ -235,7 +235,7 @@ const calculateDaysUntilDue = (dueDate: string | null): number => {
  */
 const getRandomCourseColor = (): string => {
   const colors = [
-    '#2FED7B', // ASTAR Green
+    '#3fad93', // ASTAR Green
     '#A855F7', // Purple
     '#F59E0B', // Amber
     '#3B82F6', // Blue

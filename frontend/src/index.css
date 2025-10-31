@@ -18,7 +18,7 @@ All colors MUST be HSL.
     --popover: 218 14% 13%;
     --popover-foreground: 0 0% 98%;
     
-    --primary: 144 84% 56%;  /* #2FED7B */
+    --primary: 166 47% 46%;  /* #3fad93 */
     --primary-foreground: 0 0% 100%;
     
     --secondary: 218 14% 18%;
@@ -27,7 +27,7 @@ All colors MUST be HSL.
     --muted: 218 14% 16%;
     --muted-foreground: 0 0% 65%;
     
-    --accent: 144 84% 56%;  /* same as primary - #2FED7B */
+    --accent: 166 47% 46%;  /* same as primary - #3fad93 */
     --accent-foreground: 0 0% 100%;
     
     --destructive: 0 72% 51%;
@@ -38,20 +38,20 @@ All colors MUST be HSL.
     
     --border: 218 14% 20%;
     --input: 218 14% 16%;
-    --ring: 144 84% 62%;  /* slightly lighter for ring */
+    --ring: 166 47% 52%;  /* slightly lighter for ring */
     
     --radius: 0.75rem;  /* 12px */
     
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(144 84% 56%), hsl(144 84% 62%));
-    --gradient-accent: linear-gradient(135deg, hsl(144 84% 56%), hsl(144 84% 62%));
+    --gradient-primary: linear-gradient(135deg, hsl(166 47% 46%), hsl(166 47% 52%));
+    --gradient-accent: linear-gradient(135deg, hsl(166 47% 46%), hsl(166 47% 52%));
     --gradient-card: linear-gradient(180deg, hsl(218 14% 13%), hsl(218 14% 11%));
     
     /* Shadows */
     --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
     --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
     --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1);
-    --shadow-glow: 0 0 20px rgb(47 237 123 / 0.2);  /* #2FED7B with opacity */
+    --shadow-glow: 0 0 20px rgb(63 173 147 / 0.2);  /* #3fad93 with opacity */
     --shadow-urgent: 0 0 20px rgb(255 107 0 / 0.3);
     
     /* Transitions */

@@ -56,7 +56,7 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       boxShadow: {
-        'glow': '0 0 20px rgb(47 237 123 / 0.15)',  /* #2FED7B with opacity */
+        'glow': '0 0 20px rgb(63 173 147 / 0.15)',  /* #3fad93 with opacity */
         'urgent': '0 0 20px rgb(255 107 0 / 0.3)',
       },
       backgroundImage: {

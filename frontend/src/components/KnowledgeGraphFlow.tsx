@@ -36,8 +36,8 @@ const getStatusColor = (status: ConceptNode['status']) => {
   switch (status) {
     case 'mastered':
       return {
-        bg: '#2FED7B',
-        border: '#2FED7B',
+        bg: '#3fad93',
+        border: '#3fad93',
         text: '#ffffff',
       };
     case 'in-progress':
@@ -180,12 +180,12 @@ const KnowledgeGraphFlow: React.FC<KnowledgeGraphFlowProps> = ({
             type: 'smoothstep',
             animated: concept.id === currentConcept || targetId === currentConcept,
             style: {
-              stroke: concept.id === currentConcept || targetId === currentConcept ? '#2FED7B' : '#4B5563',
+              stroke: concept.id === currentConcept || targetId === currentConcept ? '#3fad93' : '#4B5563',
               strokeWidth: 2,
             },
             markerEnd: {
               type: MarkerType.ArrowClosed,
-              color: concept.id === currentConcept || targetId === currentConcept ? '#2FED7B' : '#4B5563',
+              color: concept.id === currentConcept || targetId === currentConcept ? '#3fad93' : '#4B5563',
             },
           });
         });

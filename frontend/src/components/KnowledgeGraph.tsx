@@ -104,7 +104,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
             y1={concept.y}
             x2={target.x}
             y2={target.y}
-            stroke={isCurrent || isHovered ? '#2FED7B' : '#374151'}
+            stroke={isCurrent || isHovered ? '#3fad93' : '#374151'}
             strokeWidth={isCurrent || isHovered ? 3 : 2}
             strokeOpacity={isCurrent || isHovered ? 0.8 : 0.3}
             className="transition-all duration-300"
@@ -231,7 +231,7 @@ const KnowledgeGraph: React.FC<KnowledgeGraphProps> = ({
                   <circle
                     r={38}
                     fill="none"
-                    stroke="#2FED7B"
+                    stroke="#3fad93"
                     strokeWidth="2"
                     strokeDasharray="4 4"
                     className="animate-spin"
