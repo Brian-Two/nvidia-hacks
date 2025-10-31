@@ -25,9 +25,14 @@ const Layout = ({ children }: LayoutProps) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2 group">
+            <Link to="/" className="flex items-center gap-1 group">
+              <img 
+                src="/favicon-32x32.png" 
+                alt="ASTAR Logo" 
+                className="w-8 h-8"
+              />
               <span className="text-xl font-bold text-foreground">
-                ASTAR
+                STAR
               </span>
             </Link>
 
