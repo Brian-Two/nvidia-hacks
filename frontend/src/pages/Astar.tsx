@@ -1270,7 +1270,6 @@ const Astar = () => {
               size="sm"
               onClick={() => setStepMode(!stepMode)}
               className="h-8"
-              disabled={problemSteps.length === 0 && !stepMode}
             >
               <Zap className="w-4 h-4 mr-1" />
               Step Mode
