@@ -376,12 +376,67 @@ export const createFoldersFromCourses = (courses: Array<{ id: number; name: stri
 // Get or create folder for an assignment
 export const getOrCreateFolderForAssignment = (courseId: string, courseName: string): Folder => {
   const folders = getFolders();
+  
+  // First, try to find by exact courseId match
   let folder = folders.find(f => f.courseId === courseId);
   
-  if (!folder) {
-    folder = createFolder(courseName, courseId, courseName);
+  if (folder) {
+    return folder;
   }
   
+  // If no courseId match, try to find by similar course name
+  // This handles cases where Canvas folders exist but don't have courseId yet
+  const normalizedCourseName = courseName.toLowerCase().trim()
+    .replace(/^20\d{2} (Fall|Spring|Summer|Winter) /, '') // Remove term prefix
+    .replace(/\s*\([^)]*\)/, ''); // Remove course codes like (CSCI-475-01)
+  
+  // Look for folders with similar names
+  folder = folders.find(f => {
+    const normalizedFolderName = f.name.toLowerCase().trim()
+      .replace(/^20\d{2} (Fall|Spring|Summer|Winter) /, '')
+      .replace(/\s*\([^)]*\)/, '');
+    
+    // Check if names match or one contains the other
+    if (normalizedFolderName === normalizedCourseName) {
+      return true;
+    }
+    
+    // Check if the key course name is contained (e.g., "Machine Learning" in "Intro to Machine Learning")
+    const courseWords = normalizedCourseName.split(/\s+/).filter(w => w.length > 3);
+    const folderWords = normalizedFolderName.split(/\s+/).filter(w => w.length > 3);
+    
+    // If at least 2 significant words match, consider it the same course
+    if (courseWords.length >= 2 && folderWords.length >= 2) {
+      const matchCount = courseWords.filter(cw => 
+        folderWords.some(fw => fw.includes(cw) || cw.includes(fw))
+      ).length;
+      
+      return matchCount >= 2;
+    }
+    
+    // For single-word courses, check for exact match
+    if (courseWords.length === 1 && folderWords.length === 1) {
+      return courseWords[0] === folderWords[0];
+    }
+    
+    return false;
+  });
+  
+  if (folder) {
+    // Update the folder with courseId if it was missing
+    if (!folder.courseId && courseId) {
+      const updatedFolders = folders.map(f => 
+        f.id === folder.id ? { ...f, courseId, courseName } : f
+      );
+      saveFolders(updatedFolders);
+      folder.courseId = courseId;
+      folder.courseName = courseName;
+    }
+    return folder;
+  }
+  
+  // Only create new folder if no match found
+  folder = createFolder(courseName, courseId, courseName);
   return folder;
 };
 

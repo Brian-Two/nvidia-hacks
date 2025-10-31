@@ -67,28 +67,35 @@ Subject/Topic:`,
 
 /**
  * Determines if a topic is similar to an existing folder name
- * Uses simple string matching for now, could be enhanced with semantic similarity
+ * Uses enhanced string matching with course name normalization
  */
 export function findSimilarFolder(
   topic: string,
   existingFolders: Array<{ id: string; name: string }>
 ): { id: string; name: string } | null {
-  const normalizedTopic = topic.toLowerCase().trim();
+  // Normalize topic: remove term prefixes and course codes
+  const normalizedTopic = topic.toLowerCase().trim()
+    .replace(/^20\d{2} (Fall|Spring|Summer|Winter) /, '') // Remove term prefix
+    .replace(/\s*\([^)]*\)/, ''); // Remove course codes like (CSCI-475-01)
 
   // Look for exact or very similar matches
   for (const folder of existingFolders) {
-    const normalizedFolderName = folder.name.toLowerCase().trim();
+    const normalizedFolderName = folder.name.toLowerCase().trim()
+      .replace(/^20\d{2} (Fall|Spring|Summer|Winter) /, '')
+      .replace(/\s*\([^)]*\)/, '');
 
-    // Exact match
+    // Exact match after normalization
     if (normalizedFolderName === normalizedTopic) {
+      console.log(`✅ Found exact match: "${folder.name}" for topic "${topic}"`);
       return folder;
     }
 
-    // One contains the other (e.g., "Calculus" matches "Calculus I")
+    // One contains the other (e.g., "Machine Learning" matches "Intro to Machine Learning")
     if (
       normalizedFolderName.includes(normalizedTopic) ||
       normalizedTopic.includes(normalizedFolderName)
     ) {
+      console.log(`✅ Found containing match: "${folder.name}" for topic "${topic}"`);
       return folder;
     }
 
@@ -96,17 +103,51 @@ export function findSimilarFolder(
     const topicWords = normalizedTopic.split(/\s+/).filter(w => w.length > 3);
     const folderWords = normalizedFolderName.split(/\s+/).filter(w => w.length > 3);
     
-    if (topicWords.length >= 2) {
+    // For multi-word topics/folders
+    if (topicWords.length >= 2 && folderWords.length >= 2) {
       const matchingWords = topicWords.filter(word => 
         folderWords.some(fw => fw.includes(word) || word.includes(fw))
       );
 
       if (matchingWords.length >= 2) {
+        console.log(`✅ Found word match: "${folder.name}" for topic "${topic}" (${matchingWords.length} words matched)`);
+        return folder;
+      }
+    }
+    
+    // For single-word topics/folders, check for exact word match
+    if (topicWords.length === 1 && folderWords.length === 1) {
+      if (topicWords[0] === folderWords[0]) {
+        console.log(`✅ Found single-word match: "${folder.name}" for topic "${topic}"`);
+        return folder;
+      }
+    }
+    
+    // Check for common course abbreviations/variations
+    const courseAliases: { [key: string]: string[] } = {
+      'machine learning': ['ml', 'ai', 'artificial intelligence'],
+      'computer science': ['cs', 'comp sci', 'computing'],
+      'mathematics': ['math', 'calculus', 'algebra'],
+      'physics': ['phys', 'mechanics'],
+      'chemistry': ['chem', 'organic chemistry'],
+      'biology': ['bio', 'life science'],
+      'data structures': ['dsa', 'algorithms'],
+      'operating systems': ['os', 'systems'],
+    };
+    
+    for (const [full, aliases] of Object.entries(courseAliases)) {
+      if (normalizedTopic.includes(full) && aliases.some(alias => normalizedFolderName.includes(alias))) {
+        console.log(`✅ Found alias match: "${folder.name}" for topic "${topic}"`);
+        return folder;
+      }
+      if (normalizedFolderName.includes(full) && aliases.some(alias => normalizedTopic.includes(alias))) {
+        console.log(`✅ Found alias match: "${folder.name}" for topic "${topic}"`);
         return folder;
       }
     }
   }
 
+  console.log(`❌ No matching folder found for topic "${topic}"`);
   return null;
 }
 
