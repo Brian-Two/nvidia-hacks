@@ -113,18 +113,18 @@ class MCPServer {
       const result = await githubClient.testConnection();
       
       if (!result.success) {
-        this.status = 'error';
-        return { 
-          success: false, 
-          error: result.error || 'Invalid GitHub token or insufficient permissions' 
-        };
-      }
-
-      this.status = 'connected';
-      this.lastSync = new Date().toISOString();
+      this.status = 'error';
       return { 
-        success: true, 
-        message: 'GitHub connected successfully',
+        success: false, 
+          error: result.error || 'Invalid GitHub token or insufficient permissions' 
+      };
+    }
+
+    this.status = 'connected';
+    this.lastSync = new Date().toISOString();
+    return { 
+      success: true, 
+      message: 'GitHub connected successfully',
         data: { 
           username: result.user, 
           name: result.name,
