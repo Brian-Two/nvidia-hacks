@@ -69,7 +69,7 @@ const Onboarding = () => {
             <h1 className="text-3xl font-bold mb-2 text-foreground">
               Welcome to ASTAR
             </h1>
-            <p className="text-muted-foreground">Bring Back Critical Thinking</p>
+            <p className="text-muted-foreground">Simplify learning. Preserve critical thinking.</p>
           </div>
 
           {/* Form */}
